@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "biblioterra-scraper"
+version = "0.1.0"
+description = ""
+authors = ["lamarcke <cassiolamarcksilvafreitas@gmail.com>"]
+readme = "README.md"
+packages = [{include = "biblioterra_scraper"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+requests-html = "^0.10.0"
+selenium = "^4.6.0"
+pydantic = "^1.10.2"
+python-dotenv = "^0.21.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
