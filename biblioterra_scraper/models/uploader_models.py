@@ -2,10 +2,17 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 from selenium.webdriver.remote.webelement import WebElement
+from selenium.webdriver.support.select import Select
 
 
 class AvailableSources(str, Enum):
     elivros = "elivros.love"
+
+
+class ValidLanguages(str, Enum):
+    # Values should be the same as in libgen.bz language select input.
+    english = "English"
+    portuguese = "Portuguese"
 
 
 class ValidTopics(str, Enum):
@@ -14,6 +21,7 @@ class ValidTopics(str, Enum):
 
 
 class LibgenMetadata(BaseModel):
+    # Adding or removing anything will break existing update queue and upload history entries.
     topic: ValidTopics
     title: str
     authors: str
@@ -36,8 +44,7 @@ class UploadMetadataElements(BaseModel):
     series: WebElement
     description: WebElement
     pages: WebElement
-    language: WebElement
+    language: Select
 
     class Config:
         arbitrary_types_allowed = True
-

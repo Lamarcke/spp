@@ -213,7 +213,7 @@ dmypy.json
 cython_debug/
 
 upload_queue.txt
-uploaded_files.txt
+upload_history.txt
 *.txt
 test.py
 temp_downloads/*

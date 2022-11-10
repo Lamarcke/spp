@@ -1,10 +1,10 @@
 import os
 
 
-def setup_uploaded_files_log():
-    uploaded_files_log = os.environ.get("UPLOAD_QUEUE_FILE")
+def setup_upload_history():
+    uploaded_files_log = os.environ.get("UPLOAD_HISTORY_FILE")
     if uploaded_files_log is None:
-        uploaded_files_log = os.path.abspath(rf".\uploaded_files.txt")
+        uploaded_files_log = os.path.abspath(rf".\upload_history.txt")
 
     uploaded_files_log.encode(encoding="UTF-8")
 
@@ -14,7 +14,7 @@ def setup_uploaded_files_log():
     return uploaded_files_log
 
 
-def setup_upload_queue_log():
+def setup_upload_queue():
     upload_queue_file = os.environ.get("UPLOAD_QUEUE_FILE")
 
     if upload_queue_file is None:

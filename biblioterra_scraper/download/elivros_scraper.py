@@ -5,7 +5,7 @@ import re
 from bs4 import BeautifulSoup
 from pydantic import ValidationError
 
-from selenium.webdriver import Keys
+from selenium.webdriver import Keys, ActionChains
 from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
@@ -27,15 +27,18 @@ from biblioterra_scraper.upload.libgen_uploader import LibgenUpload
 class ELivrosDownloader(Scraper):
 
     def __init__(self):
+
         self.base_url = r"https://elivros.love"
         self._rand_book_url = "http://elivros.love/page/RandomBook"
         self.queue_service = UploadQueue()
         self.helper = ScraperHelper()
+        self.first_run = True
         self.book_info = None
         self.download_path = setup_download_folder()
         self.metadata: ElivrosMetadata | None = None
         self.driver: WebDriver | None = None
-        self.valid_extensions = ["epub", "pdf", "mobi"]
+        self.valid_extensions = ("epub", "pdf", "mobi")
+        self.elapsed_time: int | None = None
         self.old_downloads: list[str] = []
         self.downloaded_filenames: list[str] = []
         self.fiction_categories = ["Ficção", "Aventura", "Romance",
@@ -54,7 +57,7 @@ class ELivrosDownloader(Scraper):
         downloaded_filenames = []
         for filename in self._get_download_dir():
             if filename not in self.old_downloads:
-                for extension in ["epub", "pdf"]:
+                for extension in self.valid_extensions:
                     if filename.endswith(extension):
                         downloaded_filenames.append(filename)
 
@@ -70,12 +73,29 @@ class ELivrosDownloader(Scraper):
     def _clean_temp_files(self):
         # Always call this before downloading new files.
         # Cleans everything that is not a valid format to avoid errors.
-        valid_formats = (".epub", ".pdf")
-        for filename in self._get_download_dir():
-            if not filename.endswith(valid_formats):
-                os.remove(filename)
 
-    def _scrap_downloads(self):
+        valid_formats = self.valid_extensions
+
+        temp_files = [file for file in self._get_download_dir() if not file.endswith(valid_formats)]
+        for file in temp_files:
+            file_path = os.path.join(self.download_path, file)
+            try:
+                os.remove(file_path)
+            except OSError as e:
+                print(f"File '{file_path} is being used by another process.'")
+
+    def _clean_duplicated_files(self):
+        cleaned_downloaded_files = []
+        for filename in self.downloaded_filenames:
+            file_path = fr"{self.download_path}\{filename}"
+            if file_path.find("(1)") != -1:
+                os.remove(file_path)
+            else:
+                cleaned_downloaded_files.append(filename)
+
+        return cleaned_downloaded_files
+
+    def _discard_downloads(self):
         # Use this when something goes wrong and the recent downloaded files are not useful anymore.
         if len(self.downloaded_filenames) > 0:
             try:
@@ -89,15 +109,60 @@ class ELivrosDownloader(Scraper):
     def _are_downloads_done(self):
         dirlist = os.listdir(self.download_path)
         downloading_extensions = (".tmp", ".crdownload")
+
         if len(dirlist) == 0:
             return False
 
         else:
-            for filename in os.listdir(self.download_path):
+            for filename in dirlist:
                 if filename.endswith(downloading_extensions):
                     return False
 
         return True
+
+    def _prepare_download_monitor(self) -> tuple[str, str]:
+        """
+        This method opens a new tab that is going to be used by download_monitor().
+        Should be called while the browser is in the main window.
+
+        """
+
+        main_page = self.driver.current_window_handle
+        if len(self.driver.window_handles) == 2:
+            downloads_page = self.driver.window_handles[1]
+
+        else:
+            self.driver.switch_to.new_window("tab")
+            downloads_page = self.driver.current_window_handle
+            self.driver.get(r"chrome://downloads/")
+            self.driver.switch_to.window(main_page)
+
+        self.first_run = False
+
+        return main_page, downloads_page
+
+    def _monitor_downloads(self, handle: str):
+        """
+        Checks for failed downloads and resume them.
+        Receives a driver parameter.
+        The handle parameter determines the window in which to watch for chrome downloads.
+        Get it using driver.window_handlers.
+
+        """
+
+        download_url = "chrome://downloads/"
+
+        if self.driver.current_window_handle != handle:
+            self.driver.switch_to.window(handle)
+
+        if self.driver.current_url != download_url:
+            self.driver.get(download_url)
+
+        download_elements = self.driver.find_elements(By.CSS_SELECTOR, "cr-button")
+
+        for el in download_elements:
+            if el.text.find("Retomar") != -1 or el.text.find("Tentar novamente") != -1:
+                el.click()
 
     def get_book_info(self, soup: BeautifulSoup) -> ElivrosMetadata:
         try:
@@ -119,7 +184,8 @@ class ELivrosDownloader(Scraper):
                 series_el = authors_series_info[0]
                 authors_el = authors_series_info[1]
                 pages_el = authors_series_info[2]
-        except (KeyError, AttributeError) as e:
+
+        except (KeyError, AttributeError, ValueError) as e:
             logging.error(e, exc_info=True)
             raise ScraperError(e)
 
@@ -162,9 +228,11 @@ class ELivrosDownloader(Scraper):
 
         return metadata
 
-    @staticmethod
-    def _get_random_page(driver: WebDriver):
-        random_el = driver.find_element(By.CSS_SELECTOR, "#metop > ul > li:nth-child(5) > a")
+    def _get_random_page(self):
+        WebDriverWait(self.driver, 5).until(EC.element_to_be_clickable(
+            (By.CSS_SELECTOR, "#metop > ul > li:nth-child(5) > a")))
+
+        random_el = self.driver.find_element(By.CSS_SELECTOR, "#metop > ul > li:nth-child(5) > a")
         random_el.send_keys(Keys.RETURN)
 
     def navigate(self):
@@ -172,24 +240,34 @@ class ELivrosDownloader(Scraper):
 
         if self.driver.current_url not in [self._rand_book_url]:
             self.driver.get(self._rand_book_url)
-
-        # self._get_random_page(self.driver)
+            if self.first_run:
+                self._get_random_page()
 
     def _start_downloading(self):
+        on_url = self.driver.current_url
 
         WebDriverWait(
             self.driver, 3).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "#bookinfo > div.info > "
                                                                                "div.downloads > "
                                                                                "a.mainDirectLink.epub")))
-        epub = self.driver.find_element(By.CSS_SELECTOR, "#bookinfo > div.info > div.downloads > a.mainDirectLink.epub")
+        epub_el = self.driver.find_element(By.CSS_SELECTOR, "#bookinfo > div.info > div.downloads > a.mainDirectLink.epub")
 
-        pdf = self.driver.find_element(By.CSS_SELECTOR, "#bookinfo > div.info > div.downloads > a.mainDirectLink.pdf")
+        pdf_el = self.driver.find_element(By.CSS_SELECTOR, "#bookinfo > div.info > div.downloads > a.mainDirectLink.pdf")
 
-        mobi = self.driver.find_element(By.CSS_SELECTOR, "#bookinfo > div.info > div.downloads > a.mainDirectLink.pdf")
+        mobi_el = self.driver.find_element(By.CSS_SELECTOR, "#bookinfo > div.info > div.downloads > a.mainDirectLink.mobi")
 
-        epub.send_keys(Keys.LEFT_CONTROL + Keys.RETURN)
-        pdf.send_keys(Keys.LEFT_CONTROL + Keys.RETURN)
-        mobi.send_keys(Keys.LEFT_CONTROL + Keys.RETURN)
+        for index, el in enumerate([epub_el, pdf_el, mobi_el]):
+            try:
+                el.send_keys(Keys.RETURN)
+                time.sleep(3)
+            except:
+                # If the current url corresponds to elivros' error page and it's not the last iteration.
+                if self.driver.current_url.find("frodosburden") != -1 and index != 2:
+                    print("back")
+                    self.driver.back()
+                    time.sleep(4)
+
+
 
     def as_scraper_metadata(self) -> ElivrosMetadata:
         return self.metadata
@@ -202,7 +280,7 @@ class ELivrosDownloader(Scraper):
                                       filepaths=[fr"{self.download_path}\{filename}" for filename in
                                                  self.downloaded_filenames], source=AvailableSources.elivros)
         except ValidationError as e:
-            self._scrap_downloads()
+            self._discard_downloads()
 
             logging.error(f"Error while converting metadata '{self.metadata} to "
                           f"LibenMetadata. Scraping downloads. {e}", exc_info=True)
@@ -217,10 +295,10 @@ class ELivrosDownloader(Scraper):
         try:
             self.queue_service.add_to_queue(upload_entry)
         except UploadQueueError as e:
-            self._scrap_downloads()
+            self._discard_downloads()
             raise e
 
-    def make_download(self, driver: WebDriver, timeout: int = 45) -> ElivrosMetadata:
+    def make_download(self, driver: WebDriver, timeout: int = 60) -> ElivrosMetadata:
         """
         Main method. Makes the actual downloading.
 
@@ -235,37 +313,48 @@ class ELivrosDownloader(Scraper):
         self.old_downloads = self._get_download_dir()
 
         self.driver = driver
-        LibgenUpload.test_driver(self.driver)
         self._clean_temp_files()
+
         self.navigate()
+        tab_handler = self._prepare_download_monitor()
+        main_page = tab_handler[0]
+        downloads_page = tab_handler[1]
 
         soup = self._parse_html()
-
         self.metadata = self.get_book_info(soup)
+        navigated_url = self.driver.current_url
         self._start_downloading()
 
         seconds = 0
+
         while True:
             time.sleep(1)
 
-            # Monitor downloads and resumes broken ones.
-            self.helper.monitor_downloads(self.driver)
+            self._monitor_downloads(downloads_page)
 
             if seconds > timeout:
+                self.driver.switch_to.window(main_page)
                 if self.metadata:
                     raise ScraperError(f"Failed to download {self.driver.current_url} due to timeout.")
                 else:
                     raise ScraperError(f"Failed to download book due to timeout. Metadata couldn't be retrieved.")
-            seconds += 1
 
             if self._are_downloads_done():
+                self.driver.switch_to.window(main_page)
                 break
 
+            seconds += 1
+
+        self.elapsed_time = seconds
         self.downloaded_filenames = self._find_newly_added_files()
+        self.downloaded_filenames = self._clean_duplicated_files()
 
         if len(self.downloaded_filenames) == 0:
-            logging.error(fr"Downloading failed for URL: {self.driver.current_url}")
+            logging.error(fr"Downloading failed for URL: {navigated_url}")
             raise ScraperError("No new file has been downloaded")
+
+        logging.info(f"Downloaded files '{self.downloaded_filenames}' from {navigated_url} in "
+                     f"{self.elapsed_time} seconds.")
 
         self.append_to_queue()
 

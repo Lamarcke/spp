@@ -9,8 +9,7 @@ from biblioterra_scraper.upload.libgen_uploader import LibgenUpload
 
 class UploadHelper:
     """
-    This helper class has methods for batch uploading.
-    Using this class is optional.
+    This class implements static helpers that are to be used by UploadQueue and LibgenUpload.
     """
 
     def __init__(self, download_folder_path: str, driver: WebDriver):

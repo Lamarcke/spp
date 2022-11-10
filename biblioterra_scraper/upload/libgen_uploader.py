@@ -1,15 +1,18 @@
 import logging
 import os
 import time
+from copy import copy
 
 from selenium import webdriver
 from selenium.common import ElementNotSelectableException, WebDriverException
 from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.select import Select
 
 from biblioterra_scraper.exceptions.exceptions import UploaderError
 from biblioterra_scraper.models.uploader_models import LibgenMetadata, ValidTopics, UploadMetadataElements
-from biblioterra_scraper.config import setup_upload_queue_log, setup_download_folder, setup_driver
+from biblioterra_scraper.config import setup_upload_queue, setup_download_folder, setup_driver, setup_upload_history
+from biblioterra_scraper.upload import UploadQueue
 
 
 class LibgenUpload:
@@ -18,41 +21,29 @@ class LibgenUpload:
     You can use an active driver instance here.
     """
 
-    def __init__(self, metadata: LibgenMetadata, driver: WebDriver = None):
-
-        if driver is None:
-            self.driver = setup_driver()
-        else:
-            self.driver = driver
-        self.metadata = metadata
+    def __init__(self):
+        self.driver: WebDriver | None = None
+        self.metadata: LibgenMetadata | None = None
         self.username = "genesis"
         self.password = "upload"
         self.scitech_upload = f"https://{self.username}:{self.password}@library.bz/main/upload/"
         self.fiction_upload = f"https://{self.username}:{self.password}@library.bz/fiction/upload/"
         self.file_path: str | None = None
+        self.queue = UploadQueue()
         self.download_path = setup_download_folder()
-        self.upload_log = setup_upload_queue_log()
+        self.upload_history = setup_upload_history()
+        self.valid_extensions = ("epub", "pdf", "mobi")
 
     @staticmethod
-    def is_extension_valid(filename: str):
-        valid_extensions = ["epub", "pdf"]
-        for extension in valid_extensions:
-            if filename.endswith(extension):
-                return True
+    def _is_path_valid(file_path: str):
+        file_path.encode("UTF-8")
+        return os.path.isfile(file_path)
+
+    def _is_extension_valid(self, file_path: str):
+        if file_path.endswith(self.valid_extensions):
+            return True
 
         return False
-
-    @staticmethod
-    def test_driver(driver: WebDriver):
-        # Raises
-        try:
-            test = driver.current_url
-            print(test)
-        except WebDriverException as e:
-            raise e
-
-        except BaseException as e:
-            raise WebDriverException("Driver is invalid.")
 
     def navigate(self):
         driver = self.driver
@@ -92,6 +83,7 @@ class LibgenUpload:
             language_el = self.driver.find_element(By.CSS_SELECTOR, "#record_form > fieldset:nth-child(2) > "
                                                                     "ul:nth-child(5) > li:nth-child(1) > input["
                                                                     "type=text]")
+            language_el = Select(language_el)
         else:
             title_el = self.driver.find_element(By.CSS_SELECTOR, "#record_form > fieldset:nth-child(2) > "
                                                                  "ul:nth-child(3) > li:nth-child(1) > label > input["
@@ -106,9 +98,12 @@ class LibgenUpload:
                                                                  "type=text]")
             descr_el = self.driver.find_element(By.CSS_SELECTOR, "#record_form > fieldset:nth-child(2) > "
                                                                  "div:nth-child(10) > label > textarea")
+
             language_el = self.driver.find_element(By.CSS_SELECTOR, "#record_form > fieldset:nth-child(2) > "
                                                                     "ul:nth-child(5) > li:nth-child(1) > input["
                                                                     "type=text]")
+            language_el = Select(language_el)
+
         return UploadMetadataElements(title=title_el, authors=authors_el,
                                       series=series_el, description=descr_el, pages=pages_el,
                                       language=language_el)
@@ -121,6 +116,13 @@ class LibgenUpload:
 
         fields.title.send_keys(self.metadata.title)
         fields.authors.send_keys(self.metadata.authors)
+        try:
+            fields.language.select_by_visible_text(self.metadata.language)
+
+        except:
+            logging.error(f"Trying to upload file with invalid language value. {self.metadata.language}")
+            raise UploaderError(f"Trying to upload file with invalid language value. {self.metadata.language}")
+
         if self.metadata.series:
             fields.series.clear()
             fields.series.send_keys(self.metadata.series)
@@ -130,9 +132,7 @@ class LibgenUpload:
         if self.metadata.pages:
             fields.pages.clear()
             fields.pages.send_keys(self.metadata.pages)
-        if self.metadata.language:
-            fields.language.clear()
-            fields.language.send_keys(self.metadata.language)
+
         else:
             raise UploaderError("No language specified.")
 
@@ -143,31 +143,71 @@ class LibgenUpload:
         uploaded_url = uploaded_url_el.get_attribute("href")
         return uploaded_url
 
-    def _avoid_duplicates(self, filename: str):
-        with open(self.upload_log, "r") as ul:
-            for line in ul:
-                if filename in line:
-                    raise UploaderError("Duplicate upload.")
-
-    def make_upload(self, filename: str):
+    def _is_entry_duplicated(self):
         """
-        Tries to upload "filename" to libgen.
-        Note that filename should be a file name relative to the download_path.
-        If no download path is set, will use the default one.
-        e.g.:
-        download_path = "C:\Download"
-        filename = "a_book.epub"
-        final path = "C:\a_book.epub"
+        Check if the files of current metadata are duplicated.
 
+        If they are, try to find unique ones.
+
+        If there's none, entry is duplicated.
+        :return: bool
         """
 
-        self.file_path = rf"{self.download_path}\{filename}"
+        # This script iterates through the current upload history, and removes duplicated files from the
+        # current metadata object.
+        # If the list of files is emptied, the metadata only has duplicated files,
+        # and thus should not be uploaded.
+        for entry in self.queue.get_current_history():
+            if entry.metadata == self.metadata:
+                unique_files = [file for file in self.metadata.filepaths
+                                if file not in entry.metadata.filepaths]
+                if len(unique_files) > 0:
+                    self.metadata.filepaths = unique_files
+                else:
+                    return True
+
+        return False
+
+    def _check_and_fix_files(self):
+        """
+        Tests the current metadata object' files for invalid paths and extensions.
+        """
+        valid_files = []
+        for file in self.metadata.filepaths:
+            if self._is_path_valid(file) and self._is_extension_valid(file):
+
+                valid_files.append(file)
+            else:
+                logging.warning(f"{file} is an invalid file. "
+                                f"Files should be readable and point to an absolute path.")
+
+        if len(valid_files) > 0:
+            if len(valid_files) != len(self.metadata.filepaths):
+                incorrect_files = [file for file in self.metadata.filepaths if file not in valid_files]
+                logging.warning("Attempted to upload file with incorrect extensions or invalid paths.")
+                logging.warning(f"Incorrect files: {incorrect_files}")
+                logging.warning(f"Valid files: {valid_files}")
+
+            self.metadata.filepaths = valid_files
+
+        else:
+            raise UploaderError("Provided metadata has invalid paths or extensions. "
+                                "No file passed validation.")
+
+    def make_upload(self, driver: WebDriver, metadata: LibgenMetadata):
+        """
+        Main method.
+        Upload to libgen the files in the metadata object using it as source of information.
+        """
+        self.metadata = metadata
+        self.driver = driver
+        if self._is_entry_duplicated():
+            raise UploaderError("Entry has already been uploaded. Skipping.")
+        self._check_and_fix_files()
         self.navigate()
-        try:
-            self.send_file()
-        except ElementNotSelectableException:
-            raise UploaderError("Error while selecting file upload button. Libgen may be down.")
-        self.provide_metadata()
-        uploaded_url = self.finish_upload()
-        logging.info(fr"Uploaded file '{file_path} to libgen, available at: '{uploaded_url}'")
-        return uploaded_url
+        # TODO
+
+
+
+
+

@@ -16,7 +16,6 @@ def setup_download_folder() -> str:
 
     if not os.path.isdir(download_folder):
         os.mkdir(download_folder)
-    print(download_folder)
     return download_folder
 
 
