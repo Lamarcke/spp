@@ -13,15 +13,15 @@ import time
 
 from selenium.webdriver.support.wait import WebDriverWait
 
-from biblioterra_scraper.config import setup_download_folder
-from biblioterra_scraper.download.base import Scraper
-from biblioterra_scraper.exceptions import UploadQueueError
-from biblioterra_scraper.exceptions.exceptions import ScraperError
-from biblioterra_scraper.download.helpers import ScraperHelper
-from biblioterra_scraper.models.elivros_models import ElivrosMetadata
-from biblioterra_scraper.models.uploader_models import ValidTopics, LibgenMetadata, AvailableSources
-from biblioterra_scraper.upload import UploadQueue
-from biblioterra_scraper.upload.libgen_uploader import LibgenUpload
+from scrapers_preservation.config import setup_download_folder
+from scrapers_preservation.download.base import Scraper
+from scrapers_preservation.exceptions import UploadQueueError
+from scrapers_preservation.exceptions.exceptions import ScraperError
+from scrapers_preservation.download.helpers import ScraperHelper
+from scrapers_preservation.models.elivros_models import ElivrosMetadata
+from scrapers_preservation.models.uploader_models import ValidTopics, LibgenMetadata, AvailableSources
+from scrapers_preservation.upload import UploadQueue
+from scrapers_preservation.upload.libgen_uploader import LibgenUpload
 
 
 class ELivrosDownloader(Scraper):

@@ -6,10 +6,10 @@ from typing import Iterable
 from pydantic import ValidationError
 import itertools
 
-from biblioterra_scraper.exceptions import UploadQueueFileError
-from biblioterra_scraper.exceptions.exceptions import UploadQueueError
-from biblioterra_scraper.models.uploader_models import LibgenMetadata, UploadedFileInfo
-from biblioterra_scraper.config import setup_upload_queue, setup_upload_history
+from scrapers_preservation.exceptions import UploadQueueFileError
+from scrapers_preservation.exceptions.exceptions import UploadQueueError
+from scrapers_preservation.models.uploader_models import LibgenMetadata, UploadedFileInfo
+from scrapers_preservation.config import setup_upload_queue, setup_upload_history
 
 
 class UploadQueue:

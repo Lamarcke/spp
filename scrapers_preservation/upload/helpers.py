@@ -2,9 +2,9 @@ import os
 
 from selenium.webdriver.chrome.webdriver import WebDriver
 
-from biblioterra_scraper.exceptions.exceptions import UploaderError
-from biblioterra_scraper.models.uploader_models import LibgenMetadata
-from biblioterra_scraper.upload.libgen_uploader import LibgenUpload
+from scrapers_preservation.exceptions.exceptions import UploaderError
+from scrapers_preservation.models.uploader_models import LibgenMetadata
+from scrapers_preservation.upload.libgen_uploader import LibgenUpload
 
 
 class UploadHelper:

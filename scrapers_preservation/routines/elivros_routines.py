@@ -2,9 +2,9 @@ import time
 
 from selenium.common import WebDriverException
 
-from biblioterra_scraper.config import setup_driver
-from biblioterra_scraper.download import ELivrosDownloader
-from biblioterra_scraper.exceptions import ScraperError
+from scrapers_preservation.config import setup_driver
+from scrapers_preservation.download import ELivrosDownloader
+from scrapers_preservation.exceptions import ScraperError
 
 
 def elivros_downloader():

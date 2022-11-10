@@ -9,10 +9,10 @@ from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.select import Select
 
-from biblioterra_scraper.exceptions.exceptions import UploaderError
-from biblioterra_scraper.models.uploader_models import LibgenMetadata, ValidTopics, UploadMetadataElements
-from biblioterra_scraper.config import setup_upload_queue, setup_download_folder, setup_driver, setup_upload_history
-from biblioterra_scraper.upload import UploadQueue
+from scrapers_preservation.exceptions.exceptions import UploaderError
+from scrapers_preservation.models.uploader_models import LibgenMetadata, ValidTopics, UploadMetadataElements
+from scrapers_preservation.config import setup_upload_queue, setup_download_folder, setup_driver, setup_upload_history
+from scrapers_preservation.upload import UploadQueue
 
 
 class LibgenUpload:

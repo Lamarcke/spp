@@ -2,7 +2,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
-from biblioterra_scraper.models.uploader_models import ValidTopics
+from scrapers_preservation.models.uploader_models import ValidTopics
 
 
 class ElivrosMetadata(BaseModel):
