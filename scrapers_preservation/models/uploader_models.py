@@ -26,16 +26,18 @@ class LibgenMetadata(BaseModel):
     title: str
     authors: str
     language: str
+    publisher: str | None = Field(None)
     series: str | None = Field(None)
     description: str | None = Field(None)
     pages: str | None = Field(None)
+    year: str | None = Field(None)
     filepaths: list[str] = Field(..., min_length=1)
     source: AvailableSources  # Source for metadata and uploading.
 
 
 class UploadedFileInfo(BaseModel):
-    metadata: LibgenMetadata
-    available_at: str  # URL at which the file is available for moderation.
+    file_path: str
+    available_at: str | None  # URL at which the file is available for moderation.
 
 
 class UploadMetadataElements(BaseModel):
@@ -43,6 +45,7 @@ class UploadMetadataElements(BaseModel):
     authors: WebElement
     series: WebElement
     description: WebElement
+    publisher: WebElement
     pages: WebElement
     language: Select
 

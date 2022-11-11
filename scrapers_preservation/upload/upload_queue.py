@@ -5,6 +5,7 @@ from typing import Iterable
 
 from pydantic import ValidationError
 import itertools
+import shutil
 
 from scrapers_preservation.exceptions import UploadQueueFileError
 from scrapers_preservation.exceptions.exceptions import UploadQueueError
@@ -24,6 +25,14 @@ class UploadQueue:
         self.queue_path = setup_upload_queue()
         self.history_path = setup_upload_history()
         self.temp_queue_path = os.path.abspath(r".\temp_upload_queue.txt")
+
+    def _check_filepaths(self):
+        valid_filepaths = []
+        for filepath in self.metadata.filepaths:
+            if os.path.isfile(filepath):
+                valid_filepaths.append(filepath)
+
+        return valid_filepaths
 
     @staticmethod
     def stringfy_metadata(metadata: LibgenMetadata) -> str:
@@ -60,6 +69,7 @@ class UploadQueue:
 
     @staticmethod
     def load_stringfied_uploaded_info(uploaded_info_str: str) -> UploadedFileInfo:
+
         try:
             uploaded_info_str.strip()
             uploaded_dict = json.loads(uploaded_info_str)
@@ -73,10 +83,12 @@ class UploadQueue:
     @staticmethod
     def _compare_plain_models(model1: LibgenMetadata, model2: LibgenMetadata) -> bool:
         """
-        Compares models while excluding filepaths.
+        Compares basic info of models.
+        This is mainly used to filter which values to check for duplicated files.
+
         """
-        model1_plain = model1.copy(exclude={"filepaths"})
-        model2_plain = model2.copy(exclude={"filepaths"})
+        model1_plain = model1.copy(include={"title", "authors", "language"})
+        model2_plain = model2.copy(include={"title", "authors", "language"})
 
         if model1_plain == model2_plain:
             return True
@@ -97,7 +109,15 @@ class UploadQueue:
         temp_file = self.temp_queue_path
         if os.path.isfile(old_file) and os.path.isfile(temp_file):
             # Renames temp_file name and path to the old_file's one.
-            os.replace(temp_file, old_file)
+            try:
+                backup_queue_file = os.path.abspath(r".\upload_queue.backup")
+                shutil.copy(old_file, backup_queue_file)
+                shutil.move(temp_file, old_file)
+            except (OSError, IOError) as e:
+                logging.error("Error while replacing upload queue file.")
+                logging.error(f"{e}", exc_info=True)
+                raise UploadQueueFileError(f"Error while replacing upload queue file. {e}", )
+
         else:
             logging.warning(f"{old_file} or {temp_file} is not considered a valid file. "
                             f"Please check file permissions and method calls.")
@@ -120,6 +140,8 @@ class UploadQueue:
         """
         This method prevents that a file which has already been uploaded, or is already on upload queue is added
         again.
+
+        Tries to retrieve any new unique filepath if the current metadata matches any entry.
         """
 
         if self.metadata is None:
@@ -129,12 +151,14 @@ class UploadQueue:
 
             if uploaded_line is not None:
                 try:
-                    if uploaded_line.metadata == self.metadata:
-                        # List comp
-                        unique_filepaths = [filepath for filepath in self.metadata
-                                            if filepath not in uploaded_line.metadata.filepaths]
+                    if uploaded_line.file_path in self.metadata.filepaths:
+                        # List comprehension that returns only unique metadata's filepaths, if there's any
+                        unique_filepaths = [filepath for filepath in self.metadata.filepaths
+                                            if filepath != uploaded_line.file_path]
+
                         if len(unique_filepaths) > 0:
                             self.metadata.filepaths = unique_filepaths
+
                         else:
                             return True
 
@@ -142,7 +166,6 @@ class UploadQueue:
                     pass
 
             if queue_line is not None:
-                # Checks if line is not empty
 
                 try:
                     if self._compare_plain_models(queue_line, self.metadata):
@@ -167,8 +190,14 @@ class UploadQueue:
         Skips invalid entries.
 
         """
-        for line in open(self.history_path):
-            line_as_model = self.load_stringfied_uploaded_info(line)
+        for index, line in enumerate(open(self.history_path)):
+            try:
+                line_as_model = self.load_stringfied_uploaded_info(line)
+            except UploadQueueError as e:
+                logging.warning("Found an invalid entry in upload history:")
+                logging.error(f"{e}", exc_info=True)
+                logging.warning(f"At line {index}")
+                continue
             yield line_as_model
 
     def get_current_queue(self) -> Iterable[LibgenMetadata]:
@@ -178,15 +207,24 @@ class UploadQueue:
         Skips invalid entries.
 
         """
-        for line in open(self.queue_path):
+        for index, line in enumerate(open(self.queue_path)):
             try:
                 line_as_model = self.load_stringfied_metadata(line)
-            except UploadQueueError:
+            except UploadQueueError as e:
+                logging.warning("Found an invalid entry in upload queue:")
+                logging.error(f"{e}", exc_info=True)
+                logging.warning(f"At line {index}")
                 continue
             yield line_as_model
 
     def add_to_queue(self, metadata: LibgenMetadata):
         self.metadata = metadata
+        valid_filepaths = self._check_filepaths()
+        if len(valid_filepaths) == 0:
+            raise UploadQueueFileError("Entry has no valid filepaths. "
+                                       "This may be an file reading permission error..")
+        else:
+            self.metadata.filepaths = valid_filepaths
 
         if self.exists_on_queue_or_history():
             logging.warning(f"{metadata} is in queue or has already been uploaded.")
@@ -243,8 +281,6 @@ class UploadQueue:
 
                     else:
                         removed_from_queue = True
-
-            temp.close()
 
         if removed_from_queue:
             try:

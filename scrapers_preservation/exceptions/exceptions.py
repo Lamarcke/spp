@@ -6,6 +6,10 @@ class UploaderError(Exception):
     pass
 
 
+class UploaderFileError(Exception):
+    pass
+
+
 class UploadQueueError(Exception):
     pass
 

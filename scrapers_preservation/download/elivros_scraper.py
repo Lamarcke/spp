@@ -57,9 +57,8 @@ class ELivrosDownloader(Scraper):
         downloaded_filenames = []
         for filename in self._get_download_dir():
             if filename not in self.old_downloads:
-                for extension in self.valid_extensions:
-                    if filename.endswith(extension):
-                        downloaded_filenames.append(filename)
+                if filename.endswith(self.valid_extensions):
+                    downloaded_filenames.append(filename)
 
         return downloaded_filenames
 
@@ -85,7 +84,6 @@ class ELivrosDownloader(Scraper):
                 print(f"File '{file_path} is being used by another process.'")
 
     def _clean_duplicated_files(self):
-        cleaned_downloaded_files = []
         duplicated_strings = []
 
         for i in range(1, 10):
@@ -94,12 +92,15 @@ class ELivrosDownloader(Scraper):
         for filename in self.downloaded_filenames:
             file_path = fr"{self.download_path}\{filename}"
             for dup_str in duplicated_strings:
-                if file_path.find(dup_str) != -1:
-                    os.remove(file_path)
-                else:
-                    cleaned_downloaded_files.append(filename)
+                print(file_path.count(dup_str))
+                print(file_path.find(dup_str))
 
-        return cleaned_downloaded_files
+                if file_path.count(dup_str) > 0:
+                    try:
+                        os.remove(file_path)
+                        self.downloaded_filenames.remove(filename)
+                    except (ValueError, OSError) as e:
+                        print("Error while removing duplicated file from downloaded_filenames:", e)
 
     def _discard_downloads(self):
         # Use this when something goes wrong and the recent downloaded files are not useful anymore.
@@ -193,6 +194,14 @@ class ELivrosDownloader(Scraper):
                 authors_el = authors_series_info[0]
                 pages_el = authors_series_info[1]
             elif len(authors_series_info) > 2:
+                first_el_text = authors_series_info[0].get_text()
+                if first_el_text.count("Vol:") == 0:
+                    logging.error("Tried to add non-series value to series field.")
+                    logging.error(f"Invalid value: {first_el_text}, other values:")
+                    logging.error(
+                        f"Authors: {authors_series_info[1].get_text()}, Pages: {authors_series_info[2].get_text()}")
+                    logging.error(f"Number of elements: {len(authors_series_info)}")
+                    raise ScraperError("Wrong value defined for Series, check logs.")
                 series_el = authors_series_info[0]
                 authors_el = authors_series_info[1]
                 pages_el = authors_series_info[2]
@@ -228,7 +237,8 @@ class ELivrosDownloader(Scraper):
                               f"pages is: {pages_el.get_text()}, "
                               f"series is: {series_el}, "
                               f"and number of elements is {len(authors_series_info)}")
-                raise ScraperError("Invalid order for elements. Page element is not int.")
+                raise ScraperError("Invalid order for elements. Page element is not int. "
+                                   "Check logs for more info.")
         else:
             pages_text = None
 
@@ -290,9 +300,15 @@ class ELivrosDownloader(Scraper):
         if self.metadata is None:
             raise ScraperError("Metadata is None. Can't parse it to LibgenMetadata")
         try:
+
+            # Elivros adds their own watermark on files, making libgen uploader detect these files as having
+            # "elivros.love" as publisher. This is invalid and we want to avoid that.
+
             up_entry = LibgenMetadata(**self.metadata.dict(),
                                       filepaths=[fr"{self.download_path}\{filename}" for filename in
-                                                 self.downloaded_filenames], source=AvailableSources.elivros)
+                                                 self.downloaded_filenames],
+                                      source=AvailableSources.elivros,
+                                      publisher="")
         except ValidationError as e:
             self._discard_downloads()
 
@@ -340,13 +356,16 @@ class ELivrosDownloader(Scraper):
         self._start_downloading()
 
         seconds = 0
-        seconds_per_iteration = 3
-        done = False
+        seconds_per_iteration = 2
 
-        while not done:
-            time.sleep(seconds_per_iteration)
+        while True:
 
             self._monitor_downloads(downloads_page)
+            time.sleep(seconds_per_iteration)
+
+            if self._are_downloads_done():
+                self.driver.switch_to.window(main_page)
+                break
 
             if seconds > timeout:
                 self.driver.switch_to.window(main_page)
@@ -355,15 +374,11 @@ class ELivrosDownloader(Scraper):
                 else:
                     raise ScraperError(f"Failed to download book due to timeout. Metadata couldn't be retrieved.")
 
-            if self._are_downloads_done():
-                self.driver.switch_to.window(main_page)
-                done = True
-
-            seconds += 1
+            seconds += seconds_per_iteration
 
         self.elapsed_time = seconds
         self.downloaded_filenames = self._find_newly_added_files()
-        self.downloaded_filenames = self._clean_duplicated_files()
+        self._clean_duplicated_files()
 
         if len(self.downloaded_filenames) == 0:
             logging.error(fr"Downloading failed for URL: {navigated_url}")
