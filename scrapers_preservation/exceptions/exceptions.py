@@ -9,6 +9,9 @@ class UploaderError(Exception):
 class UploaderFileError(Exception):
     pass
 
+class UploaderDuplicateError(Exception):
+    pass
+
 
 class UploadQueueError(Exception):
     pass

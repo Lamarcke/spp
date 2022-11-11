@@ -4,7 +4,7 @@ version = "0.1.0"
 description = ""
 authors = ["lamarcke <cassiolamarcksilvafreitas@gmail.com>"]
 readme = "README.md"
-packages = [{include = "biblioterra_scraper"}]
+packages = [{include = "scrapers_preservation"}]
 
 [tool.poetry.dependencies]
 python = "^3.10"

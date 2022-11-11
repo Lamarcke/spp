@@ -19,6 +19,7 @@ def elivros_downloader():
 
         except WebDriverException as e:
             if e.msg == "Driver is invalid":
+                scraper = ELivrosDownloader()
                 driver = setup_driver()
             continue
 

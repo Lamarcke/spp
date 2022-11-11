@@ -1,1 +1,1 @@
-from .exceptions import ScraperError, UploaderError, UploadQueueError, UploadQueueFileError
+from .exceptions import ScraperError, UploaderError, UploaderFileError, UploadQueueError, UploadQueueFileError

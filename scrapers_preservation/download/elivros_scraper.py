@@ -80,8 +80,9 @@ class ELivrosDownloader(Scraper):
             file_path = os.path.join(self.download_path, file)
             try:
                 os.remove(file_path)
-            except OSError as e:
+            except (OSError, IOError) as e:
                 print(f"File '{file_path} is being used by another process.'")
+                raise e
 
     def _clean_duplicated_files(self):
         duplicated_strings = []
@@ -92,15 +93,12 @@ class ELivrosDownloader(Scraper):
         for filename in self.downloaded_filenames:
             file_path = fr"{self.download_path}\{filename}"
             for dup_str in duplicated_strings:
-                print(file_path.count(dup_str))
-                print(file_path.find(dup_str))
-
                 if file_path.count(dup_str) > 0:
                     try:
                         os.remove(file_path)
                         self.downloaded_filenames.remove(filename)
                     except (ValueError, OSError) as e:
-                        print("Error while removing duplicated file from downloaded_filenames:", e)
+                        print("Error while removing duplicated file from downloads:", e)
 
     def _discard_downloads(self):
         # Use this when something goes wrong and the recent downloaded files are not useful anymore.
@@ -114,6 +112,11 @@ class ELivrosDownloader(Scraper):
                 logging.error(f"Error while scraping invalid downloads: {e}")
 
     def _are_downloads_done(self):
+        """
+        This is a file-based method to check if downloads are done.
+
+        Prone to errors because chrome leaves failed downloads as .crdownload, which we are checking for.
+        """
         dirlist = os.listdir(self.download_path)
         downloading_extensions = (".tmp", ".crdownload")
 
@@ -126,6 +129,14 @@ class ELivrosDownloader(Scraper):
                     return False
 
         return True
+
+    def _are_chrome_downloads_done(self, downloads_list: list[dict]):
+        for download in downloads_list:
+            d_state = download.get("state")
+            if d_state == "IN_PROGRESS":
+                return False
+
+            return True
 
     def _prepare_download_monitor(self) -> tuple[str, str]:
         """
@@ -148,10 +159,12 @@ class ELivrosDownloader(Scraper):
 
         return main_page, downloads_page
 
-    def _monitor_downloads(self, handle: str):
+    def _monitor_chrome_downloads(self, handle: str):
         """
-        Checks for failed downloads and resume them.
-        Receives a driver parameter.
+        Checks if downloads are done.
+        Chrome uses shadow root in the downloads list, so while possible i don't find it useful to implement
+        a resume function. A lot of in-string JS would be necessary.
+
         The handle parameter determines the window in which to watch for chrome downloads.
         Get it using driver.window_handlers.
 
@@ -165,17 +178,15 @@ class ELivrosDownloader(Scraper):
         if self.driver.current_url != download_url:
             self.driver.get(download_url)
 
-        retry_text = ["Retry", "Retomar", "Tentar novamente", "Reiniciar", "Resumir"]
-        download_buttons = self.driver.find_elements(By.CSS_SELECTOR, "#safe > span > cr-button")
-        for btn in download_buttons:
-            btn_text = btn.text
-            try:
-                btn_text = btn_text.strip()
-                if btn_text in retry_text:
-                    btn.click()
+        # The only way to get elements from chrome's downloads list reasonably.
+        downloads: list[dict] = self.driver.execute_script("""
+        var items = document.querySelector('downloads-manager')
+            .shadowRoot.getElementById('downloadsList').items;
+        return items;
+        
+        """)
 
-            except BaseException as e:
-                logging.error("Error in monitoring downloads function", exc_info=e)
+        return self._are_chrome_downloads_done(downloads)
 
     def get_book_info(self, soup: BeautifulSoup) -> ElivrosMetadata:
         try:
@@ -356,26 +367,16 @@ class ELivrosDownloader(Scraper):
         self._start_downloading()
 
         seconds = 0
-        seconds_per_iteration = 2
+        seconds_per_iteration = 1
+        done = False
 
-        while True:
+        while not done:
 
-            self._monitor_downloads(downloads_page)
             time.sleep(seconds_per_iteration)
-
-            if self._are_downloads_done():
-                self.driver.switch_to.window(main_page)
-                break
-
-            if seconds > timeout:
-                self.driver.switch_to.window(main_page)
-                if self.metadata:
-                    raise ScraperError(f"Failed to download {self.driver.current_url} due to timeout.")
-                else:
-                    raise ScraperError(f"Failed to download book due to timeout. Metadata couldn't be retrieved.")
-
+            done = self._monitor_chrome_downloads(downloads_page)
             seconds += seconds_per_iteration
 
+        self.driver.switch_to.window(main_page)
         self.elapsed_time = seconds
         self.downloaded_filenames = self._find_newly_added_files()
         self._clean_duplicated_files()

@@ -13,7 +13,8 @@ from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support.select import Select
 
 from scrapers_preservation.exceptions import UploadQueueError, UploadQueueFileError
-from scrapers_preservation.exceptions.exceptions import UploaderError, UploaderFileError
+from scrapers_preservation.exceptions import UploaderError, UploaderFileError
+from scrapers_preservation.exceptions.exceptions import UploaderDuplicateError
 from scrapers_preservation.models.uploader_models import LibgenMetadata, ValidTopics, UploadMetadataElements, \
     UploadedFileInfo
 from scrapers_preservation.config import setup_upload_queue, setup_download_folder, setup_driver, setup_upload_history
@@ -54,6 +55,8 @@ class LibgenUpload:
     def _handle_sending_errors(self):
         """
         Handles errors that may happen after uploading a file, but before providing it's metadata.
+
+        Exceptions raised by this should be handled in the main make_upload() loop.
         """
         try:
             form_error: WebElement = self.driver.find_element(By.CSS_SELECTOR, "body > div.form_error")
@@ -64,7 +67,8 @@ class LibgenUpload:
         if form_error_text.find("already added") != -1:
             logging.error(f"Libgen has deemed file a duplicate on {self.metadata.topic} collection.")
             logging.error(f"File info: {self.current_file_path}")
-            raise UploaderError(f"Libgen has deemed file {self.current_file_path} as a duplicate.")
+            print(f"Libgen has deemed file a duplicate on {self.metadata.topic} collection.")
+            raise UploaderDuplicateError(f"Libgen has deemed file {self.current_file_path} as a duplicate.")
 
     def navigate(self):
         driver = self.driver
@@ -256,8 +260,11 @@ class LibgenUpload:
             shutil.copy(self.upload_history_path, history_backup_file)
             shutil.move(self.temp_upload_history_path, self.upload_history_path)
 
-            logging.info(f"Uploaded file {upload_info.file_path} to Libgen successfully.")
-            logging.info(f"File is waiting moderation at {upload_info.available_at}")
+            logging.info(f"Added file {upload_info.file_path} to upload history.")
+            if upload_info.available_at is None:
+                logging.warning("Couldn't retrieve upload's url. This file may be a duplicate.")
+            else:
+                logging.info(f"File is waiting moderation at {upload_info.available_at}")
 
         except (OSError, IOError) as e:
             logging.error("Error while saving upload info on upload history.")
@@ -270,7 +277,7 @@ class LibgenUpload:
         self._send_file()
         self._handle_sending_errors()
         self._provide_metadata()
-        time.sleep(60)
+        time.sleep(10)
         upload_url = self._finish_upload()
         upload_info = UploadedFileInfo(file_path=self.current_file_path, available_at=upload_url)
         self.add_to_history(upload_info)
@@ -280,14 +287,28 @@ class LibgenUpload:
         Main method.
         Upload to libgen the files in the metadata object using it as source of information.
         """
+
         self.metadata = metadata
         self.driver = driver
 
         self._remove_duplicates()
         self._check_and_fix_files()
 
+        logging.info(f"Starting upload of {self.metadata}")
         for filepath in self.metadata.filepaths:
-            self._make_file_upload(filepath)
+            try:
+
+                self._make_file_upload(filepath)
+
+            except UploaderDuplicateError:
+                # Adds detected duplicate to upload history.
+                # This exception is not raised.
+                # Reason being that there may be more files in self.metadata.filepaths waiting for upload.
+                # And the metadata also needs to be removed from upload queue.
+
+                duplicated_info = UploadedFileInfo(file_path=filepath, available_at=None)
+                self.add_to_history(duplicated_info)
+                continue
 
         try:
             self.upload_queue.remove_from_queue(metadata)
@@ -295,3 +316,6 @@ class LibgenUpload:
             logging.error("A file that was uploaded couldn't be removed from upload queue.")
             logging.error(f"{e}", exc_info=True)
             raise e
+
+        logging.info(f"Finished uploading work for {self.metadata}.")
+
