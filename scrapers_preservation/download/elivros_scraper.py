@@ -86,12 +86,18 @@ class ELivrosDownloader(Scraper):
 
     def _clean_duplicated_files(self):
         cleaned_downloaded_files = []
+        duplicated_strings = []
+
+        for i in range(1, 10):
+            duplicated_strings.append(f"({i})")
+
         for filename in self.downloaded_filenames:
             file_path = fr"{self.download_path}\{filename}"
-            if file_path.find("(1)") != -1:
-                os.remove(file_path)
-            else:
-                cleaned_downloaded_files.append(filename)
+            for dup_str in duplicated_strings:
+                if file_path.find(dup_str) != -1:
+                    os.remove(file_path)
+                else:
+                    cleaned_downloaded_files.append(filename)
 
         return cleaned_downloaded_files
 
@@ -158,11 +164,17 @@ class ELivrosDownloader(Scraper):
         if self.driver.current_url != download_url:
             self.driver.get(download_url)
 
-        download_elements = self.driver.find_elements(By.CSS_SELECTOR, "cr-button")
+        retry_text = ["Retry", "Retomar", "Tentar novamente", "Reiniciar", "Resumir"]
+        download_buttons = self.driver.find_elements(By.CSS_SELECTOR, "#safe > span > cr-button")
+        for btn in download_buttons:
+            btn_text = btn.text
+            try:
+                btn_text = btn_text.strip()
+                if btn_text in retry_text:
+                    btn.click()
 
-        for el in download_elements:
-            if el.text.find("Retomar") != -1 or el.text.find("Tentar novamente") != -1:
-                el.click()
+            except BaseException as e:
+                logging.error("Error in monitoring downloads function", exc_info=e)
 
     def get_book_info(self, soup: BeautifulSoup) -> ElivrosMetadata:
         try:
@@ -208,8 +220,15 @@ class ELivrosDownloader(Scraper):
             pages_text = re.sub("Páginas", "", pages_text)
             try:
                 pages_text = int(pages_text)
-            except TypeError:
-                pages_text = None
+            except (TypeError, ValueError):
+                logging.error("Tried to convert invalid element to page int.")
+                logging.error("Elements are:")
+                logging.error(f"Title is: {title_el.get_text()}, "
+                              f"authors is: {authors_el.get_text()}, "
+                              f"pages is: {pages_el.get_text()}, "
+                              f"series is: {series_el}, "
+                              f"and number of elements is {len(authors_series_info)}")
+                raise ScraperError("Invalid order for elements. Page element is not int.")
         else:
             pages_text = None
 
@@ -244,30 +263,25 @@ class ELivrosDownloader(Scraper):
                 self._get_random_page()
 
     def _start_downloading(self):
-        on_url = self.driver.current_url
-
         WebDriverWait(
             self.driver, 3).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "#bookinfo > div.info > "
                                                                                "div.downloads > "
                                                                                "a.mainDirectLink.epub")))
-        epub_el = self.driver.find_element(By.CSS_SELECTOR, "#bookinfo > div.info > div.downloads > a.mainDirectLink.epub")
+        epub_el = self.driver.find_element(By.CSS_SELECTOR,
+                                           "#bookinfo > div.info > div.downloads > a.mainDirectLink.epub")
 
-        pdf_el = self.driver.find_element(By.CSS_SELECTOR, "#bookinfo > div.info > div.downloads > a.mainDirectLink.pdf")
+        pdf_el = self.driver.find_element(By.CSS_SELECTOR,
+                                          "#bookinfo > div.info > div.downloads > a.mainDirectLink.pdf")
 
-        mobi_el = self.driver.find_element(By.CSS_SELECTOR, "#bookinfo > div.info > div.downloads > a.mainDirectLink.mobi")
+        mobi_el = self.driver.find_element(By.CSS_SELECTOR,
+                                           "#bookinfo > div.info > div.downloads > a.mainDirectLink.mobi")
 
         for index, el in enumerate([epub_el, pdf_el, mobi_el]):
             try:
                 el.send_keys(Keys.RETURN)
-                time.sleep(3)
+                time.sleep(2)
             except:
-                # If the current url corresponds to elivros' error page and it's not the last iteration.
-                if self.driver.current_url.find("frodosburden") != -1 and index != 2:
-                    print("back")
-                    self.driver.back()
-                    time.sleep(4)
-
-
+                pass
 
     def as_scraper_metadata(self) -> ElivrosMetadata:
         return self.metadata
@@ -298,7 +312,7 @@ class ELivrosDownloader(Scraper):
             self._discard_downloads()
             raise e
 
-    def make_download(self, driver: WebDriver, timeout: int = 60) -> ElivrosMetadata:
+    def make_download(self, driver: WebDriver, timeout: int = 90) -> ElivrosMetadata:
         """
         Main method. Makes the actual downloading.
 
@@ -326,9 +340,11 @@ class ELivrosDownloader(Scraper):
         self._start_downloading()
 
         seconds = 0
+        seconds_per_iteration = 3
+        done = False
 
-        while True:
-            time.sleep(1)
+        while not done:
+            time.sleep(seconds_per_iteration)
 
             self._monitor_downloads(downloads_page)
 
@@ -341,7 +357,7 @@ class ELivrosDownloader(Scraper):
 
             if self._are_downloads_done():
                 self.driver.switch_to.window(main_page)
-                break
+                done = True
 
             seconds += 1
 
