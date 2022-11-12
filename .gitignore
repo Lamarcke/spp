@@ -217,4 +217,6 @@ upload_history.txt
 *.txt
 test.py
 temp_downloads/*
+downloads/*
 *.backup
+temp/*
