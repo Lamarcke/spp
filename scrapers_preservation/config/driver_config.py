@@ -6,11 +6,24 @@ import os
 from selenium.webdriver.chrome.webdriver import WebDriver
 
 
+def setup_temp_download_folder() -> str:
+    temp_download_folder = os.environ.get("TEMP_DOWNLOAD_FOLDER")
+
+    if not temp_download_folder:
+        temp_download_folder = os.path.abspath(r".\temp")
+
+    temp_download_folder.encode(encoding="UTF-8")
+
+    if not os.path.isdir(temp_download_folder):
+        os.mkdir(temp_download_folder)
+
+    return temp_download_folder
+
 def setup_download_folder() -> str:
     download_folder = os.environ.get("DOWNLOAD_FOLDER")
 
     if not download_folder:
-        download_folder = os.path.abspath(r"..\..\temp_downloads")
+        download_folder = os.path.abspath(r".\temp_downloads")
 
     download_folder.encode(encoding="UTF-8")
 
@@ -34,7 +47,7 @@ def hosted_setup() -> WebDriver:
 
 def local_setup() -> WebDriver:
     ua = UserAgent()
-    download_folder = setup_download_folder()
+    download_folder = setup_temp_download_folder()
     options = webdriver.ChromeOptions()
     prefs = {"profile.default_content_settings.popups": 0,
              "download.default_directory": download_folder,  # Set the path accordingly
@@ -49,7 +62,7 @@ def local_setup() -> WebDriver:
 
 
 def setup_driver() -> WebDriver:
-    on_heroku = os.environ.get("ONHEROKU")
+    on_heroku = os.environ.get("ON_HEROKU")
     if on_heroku:
         driver = hosted_setup()
     else:

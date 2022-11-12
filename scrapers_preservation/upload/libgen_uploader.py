@@ -12,11 +12,11 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.remote.webelement import WebElement
 from selenium.webdriver.support.select import Select
 
-from scrapers_preservation.exceptions import UploadQueueError, UploadQueueFileError
+from scrapers_preservation.exceptions import UploadQueueError, UploadQueueFileError, UploaderHumanConfirmationError
 from scrapers_preservation.exceptions import UploaderError, UploaderFileError
 from scrapers_preservation.exceptions.exceptions import UploaderDuplicateError
 from scrapers_preservation.models.uploader_models import LibgenMetadata, ValidTopics, UploadMetadataElements, \
-    UploadedFileInfo
+    UploadedFileInfo, AvailableSources
 from scrapers_preservation.config import setup_upload_queue, setup_download_folder, setup_driver, setup_upload_history
 from scrapers_preservation.upload import UploadQueue
 
@@ -27,7 +27,8 @@ class LibgenUpload:
     You can use an active driver instance here.
     """
 
-    def __init__(self):
+    def __init__(self, human_confirmation: bool = False):
+        self.human_confirmation = human_confirmation
         self.driver: WebDriver | None = None
         self.metadata: LibgenMetadata | None = None
         self.username = "genesis"
@@ -52,6 +53,20 @@ class LibgenUpload:
 
         return False
 
+    def _user_confirmation(self):
+        """
+        If self.human_confirmation is True, this function receives an user input specifying if the current uploaded file
+        is invalid or not.
+        :return:
+        """
+        confirmation = input("Waiting user confirmation. Fields may be changed to fix errors. \n"
+                             "Type 'e' or 'exit' to stop uploading.")
+
+        esc_values = ("e", "exit")
+        if confirmation in esc_values:
+            raise UploaderHumanConfirmationError("User has deemed file as invalid. Skipping.")
+
+
     def _handle_sending_errors(self):
         """
         Handles errors that may happen after uploading a file, but before providing it's metadata.
@@ -65,7 +80,7 @@ class LibgenUpload:
 
         form_error_text = form_error.text
         if form_error_text.find("already added") != -1:
-            logging.error(f"Libgen has deemed file a duplicate on {self.metadata.topic} collection.")
+            logging.error(f"Libgen has deemed file as a duplicate on {self.metadata.topic} collection.")
             logging.error(f"File info: {self.current_file_path}")
             print(f"Libgen has deemed file a duplicate on {self.metadata.topic} collection.")
             raise UploaderDuplicateError(f"Libgen has deemed file {self.current_file_path} as a duplicate.")
@@ -163,6 +178,11 @@ class LibgenUpload:
             raise UploaderError(f"Trying to upload file with invalid language value. {self.metadata.language}")
 
         if self.metadata.publisher:
+            sources_list = [source for source in AvailableSources]
+            if self.metadata.publisher in sources_list:
+                # If the source adds it's own credits, add an empty string instead.
+                self.metadata.publisher = ""
+
             fields.publisher.clear()
             fields.series.send_keys(self.metadata.publisher)
 
@@ -277,7 +297,8 @@ class LibgenUpload:
         self._send_file()
         self._handle_sending_errors()
         self._provide_metadata()
-        time.sleep(10)
+        if self.human_confirmation:
+            self._user_confirmation()
         upload_url = self._finish_upload()
         upload_info = UploadedFileInfo(file_path=self.current_file_path, available_at=upload_url)
         self.add_to_history(upload_info)
@@ -297,7 +318,6 @@ class LibgenUpload:
         logging.info(f"Starting upload of {self.metadata}")
         for filepath in self.metadata.filepaths:
             try:
-
                 self._make_file_upload(filepath)
 
             except UploaderDuplicateError:
@@ -308,6 +328,12 @@ class LibgenUpload:
 
                 duplicated_info = UploadedFileInfo(file_path=filepath, available_at=None)
                 self.add_to_history(duplicated_info)
+                continue
+
+            except UploaderHumanConfirmationError:
+                logging.warning("User deemed file as invalid.")
+                logging.warning(f"File: {filepath}")
+                logging.warning(f"Metadata: {self.metadata}")
                 continue
 
         try:

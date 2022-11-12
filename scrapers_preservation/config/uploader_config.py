@@ -2,16 +2,16 @@ import os
 
 
 def setup_upload_history():
-    uploaded_files_log = os.environ.get("UPLOAD_HISTORY_FILE")
-    if uploaded_files_log is None:
-        uploaded_files_log = os.path.abspath(rf".\upload_history.txt")
+    upload_history_file = os.environ.get("UPLOAD_HISTORY_FILE")
+    if upload_history_file is None:
+        upload_history_file = os.path.abspath(rf".\upload_history.txt")
 
-    uploaded_files_log.encode(encoding="UTF-8")
+    upload_history_file.encode(encoding="UTF-8")
 
-    if not os.path.isfile(uploaded_files_log):
-        c = open(uploaded_files_log, "w")
+    if not os.path.isfile(upload_history_file):
+        c = open(upload_history_file, "w")
 
-    return uploaded_files_log
+    return upload_history_file
 
 
 def setup_upload_queue():

@@ -1,3 +1,4 @@
+import filecmp
 import json
 import logging
 import os.path
@@ -10,7 +11,7 @@ import shutil
 from scrapers_preservation.exceptions import UploadQueueFileError
 from scrapers_preservation.exceptions.exceptions import UploadQueueError
 from scrapers_preservation.models.uploader_models import LibgenMetadata, UploadedFileInfo
-from scrapers_preservation.config import setup_upload_queue, setup_upload_history
+from scrapers_preservation.config import setup_upload_queue, setup_upload_history, setup_download_folder
 
 
 class UploadQueue:
@@ -22,6 +23,7 @@ class UploadQueue:
 
     def __init__(self):
         self.metadata: LibgenMetadata | None = None
+        self.downloads_path = setup_download_folder()
         self.queue_path = setup_upload_queue()
         self.history_path = setup_upload_history()
         self.temp_queue_path = os.path.abspath(r".\temp_upload_queue.txt")
@@ -33,6 +35,9 @@ class UploadQueue:
                 valid_filepaths.append(filepath)
 
         return valid_filepaths
+
+    def _get_download_dir(self):
+        return os.listdir(self.downloads_path)
 
     @staticmethod
     def stringfy_metadata(metadata: LibgenMetadata) -> str:
@@ -135,6 +140,8 @@ class UploadQueue:
         # Make sure queue_file comes as the first paramater.
         for queue_line, uploaded_line in itertools.zip_longest(queue_gen, history_gen, fillvalue=None):
             yield queue_line, uploaded_line
+
+
 
     def exists_on_queue_or_history(self):
         """
