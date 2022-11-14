@@ -18,9 +18,9 @@ class UploaderHumanConfirmationError(Exception):
     pass
 
 
-class UploadQueueError(Exception):
+class HistoryError(Exception):
     pass
 
 
-class UploadQueueFileError(Exception):
+class HistoryFileError(Exception):
     pass

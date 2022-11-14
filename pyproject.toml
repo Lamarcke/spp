@@ -12,6 +12,9 @@ requests-html = "^0.10.0"
 selenium = "^4.6.0"
 pydantic = "^1.10.2"
 python-dotenv = "^0.21.0"
+inquirer = "^2.10.1"
+pyfiglet = "^0.8.post1"
+yaspin = "^2.2.0"
 
 
 [build-system]

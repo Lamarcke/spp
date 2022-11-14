@@ -212,11 +212,15 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-upload_queue.txt
-upload_history.txt
+
 *.txt
 test.py
 temp_downloads/*
 downloads/*
 *.backup
 temp/*
+
+
+# SPP downloaded content
+data/temp/*
+data/downloads/*

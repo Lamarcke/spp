@@ -31,13 +31,12 @@ class LibgenMetadata(BaseModel):
     description: str | None = Field(None)
     pages: str | None = Field(None)
     year: str | None = Field(None)
-    filepaths: list[str] = Field(..., min_length=1)
     source: AvailableSources  # Source for metadata and uploading.
 
 
-class UploadedFileInfo(BaseModel):
-    file_path: str
-    available_at: str | None  # URL at which the file is available for moderation.
+class UploadQueueEntry(BaseModel):
+    metadata: LibgenMetadata
+    stored_at: list[str] = Field(..., min_length=1)
 
 
 class UploadMetadataElements(BaseModel):

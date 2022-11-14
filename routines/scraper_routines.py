@@ -2,9 +2,9 @@ import time
 
 from selenium.common import WebDriverException
 
-from scrapers_preservation.config import setup_driver
-from scrapers_preservation.scrapers import ELivrosDownloader
-from scrapers_preservation.exceptions import ScraperError
+from config import setup_driver
+from scrapers import ELivrosDownloader
+from exceptions import ScraperError
 
 
 def elivros_downloader(tries: int = 0):
@@ -30,9 +30,9 @@ def elivros_downloader(tries: int = 0):
             scraper.make_download(driver)
 
         except WebDriverException as e:
-            if e.msg == "Driver is invalid":
-                scraper = ELivrosDownloader()
-                driver = setup_driver()
+            scraper = ELivrosDownloader()
+            driver = setup_driver()
+            print(e)
             continue
 
         except KeyboardInterrupt:

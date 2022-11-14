@@ -1,49 +1,44 @@
 import logging
 import os
 import re
-import shutil
 
 from bs4 import BeautifulSoup
 from pydantic import ValidationError
 
-from selenium.webdriver import Keys, ActionChains
+from selenium.webdriver import Keys
 from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 import time
-import filecmp
 
 from selenium.webdriver.support.wait import WebDriverWait
 
-from scrapers_preservation.config import setup_download_folder
-from scrapers_preservation.config.driver_config import setup_temp_download_folder
-from scrapers_preservation.scrapers.base import Scraper
-from scrapers_preservation.exceptions import UploadQueueError
-from scrapers_preservation.exceptions.exceptions import ScraperError
-from scrapers_preservation.scrapers.helpers import ScraperHelper
-from scrapers_preservation.models.elivros_models import ElivrosMetadata
-from scrapers_preservation.models.uploader_models import ValidTopics, LibgenMetadata, AvailableSources
-from scrapers_preservation.upload import UploadQueue
+from config import setup_download_folder
+from config.data_config import setup_temp_download_folder
+from exceptions.exceptions import ScraperError
+from models.history_models import DownloadHistoryEntry
+from scrapers.helpers import ScraperHelper
+from models.uploader_models import ValidTopics, LibgenMetadata, AvailableSources
+from upload import HistoryHandler
 
 
-class ELivrosDownloader(Scraper):
+class ELivrosDownloader:
 
     def __init__(self):
 
-        self.base_url = r"https://elivros.love"
+        self._base_url = r"https://elivros.love"
         self._rand_book_url = "http://elivros.love/page/RandomBook"
-        self.queue_service = UploadQueue()
+        self.history_service = HistoryHandler()
         self.first_run = True
-        self.book_info = None
         self.scraper_helper = ScraperHelper()
         self.temp_download_path = setup_temp_download_folder()
         self.download_path = setup_download_folder()
-        self.metadata: ElivrosMetadata | None = None
+        self.metadata: LibgenMetadata | None = None
         self.driver: WebDriver | None = None
         self.valid_extensions = ("epub", "pdf", "mobi")
         self.elapsed_time: int | None = None
         self.old_downloads: list[str] = []
-        self.downloaded_filenames: list[str] = []
+        self.downloaded_filepaths: list[str] = []
         self.fiction_categories = ["Ficção", "Aventura", "Romance",
                                    "Contos", "Infanto", "Policial", "Humor", "Poemas", "Suspense"]
 
@@ -58,7 +53,10 @@ class ELivrosDownloader(Scraper):
         Compares the difference between the older download list and the current one.
         Old list should be saved before making new downloads.
         Selenium offers no built-in way of retrieving this information.
+
+        Only returns new entries, duplicates of main download folder are ignored.
         """
+
         temp_downloads = self._get_temp_download_dir()
 
         downloaded_filenames = []
@@ -66,47 +64,33 @@ class ELivrosDownloader(Scraper):
             if filename not in self.old_downloads and filename.endswith(self.valid_extensions):
                 downloaded_filenames.append(filename)
 
-        return downloaded_filenames
+        unique_filenames = self.scraper_helper.get_unique_filenames(downloaded_filenames)
+        unique_filepaths = [os.path.join(self.temp_download_path, f_name) for f_name in unique_filenames]
 
-    def _remove_files(self, files: list[str]):
+        return unique_filepaths
+
+    def _clean_temp_downloads(self):
         """
-        Helper method that removes files in files parameter.
-
-        :param files: a list of filenames
+        Helper method that removes files in the temporary downloads folder.
         """
 
-        for filename in files:
+        for filename in self._get_temp_download_dir():
             path = os.path.join(self.temp_download_path, filename)
             try:
                 os.remove(path)
-                self.downloaded_filenames.remove(filename)
-
-            except (OSError, ValueError) as e:
-                logging.error(f"Error while removing file '{path}'")
+            except OSError as e:
+                logging.error(f"Error while cleaning temporary downloads. Error while removing file '{path}'")
                 logging.error(f"{e}", exc_info=True)
                 raise e
 
+        logging.info("Cleaned temporary download folder.")
+
     def _parse_html(self) -> BeautifulSoup:
         # Wait until page is loaded.
-        WebDriverWait(self.driver, 10).until(EC.visibility_of_element_located((By.CSS_SELECTOR,
-                                                                               ".SerieAut")))
+        WebDriverWait(self.driver, 3).until(EC.visibility_of_element_located((By.CSS_SELECTOR,
+                                                                              ".SerieAut")))
         soup = BeautifulSoup(self.driver.page_source, "lxml")
         return soup
-
-    def _clean_temp_files(self):
-        # Always call this before downloading new files.
-        # Cleans everything that is not a valid format to avoid errors.
-
-        valid_formats = self.valid_extensions
-
-        temp_files = [file for file in self._get_temp_download_dir() if not file.endswith(valid_formats)]
-        for file in temp_files:
-            file_path = os.path.join(self.temp_download_path, file)
-            try:
-                os.remove(file_path)
-            except (OSError, IOError) as e:
-                print(f"File '{file_path} is being used by another process.'")
-                raise e
 
     def _are_downloads_done(self):
         """
@@ -153,8 +137,6 @@ class ELivrosDownloader(Scraper):
             self.driver.get(r"chrome://downloads/")
             self.driver.switch_to.window(main_page)
 
-        self.first_run = False
-
         return main_page, downloads_page
 
     def _monitor_chrome_downloads(self, handle: str):
@@ -186,7 +168,7 @@ class ELivrosDownloader(Scraper):
 
         return self._are_chrome_downloads_done(downloads)
 
-    def get_book_info(self, soup: BeautifulSoup) -> ElivrosMetadata:
+    def get_book_info(self, soup: BeautifulSoup) -> LibgenMetadata:
         try:
             book_info_div = soup.select_one(".info")
             authors_series_info = book_info_div.select(".SerieAut > ul > li")
@@ -252,14 +234,16 @@ class ELivrosDownloader(Scraper):
             pages_text = None
 
         book_descr_el = soup.select_one("div.description > div.sinopse")
+
         try:
-            metadata = ElivrosMetadata(title=title_el.get_text(),
-                                       authors=authors_el.get_text(),
-                                       language="Portuguese",
-                                       series=series_el,
-                                       description=book_descr_el.get_text(),
-                                       pages=pages_text,
-                                       topic=topic)
+            metadata = LibgenMetadata(title=title_el.get_text(),
+                                      authors=authors_el.get_text(),
+                                      language="Portuguese",
+                                      series=series_el,
+                                      description=book_descr_el.get_text(),
+                                      pages=pages_text,
+                                      topic=topic,
+                                      source=AvailableSources.elivros)
         except ValidationError as e:
             logging.error(e, exc_info=True)
             raise ScraperError(e)
@@ -302,72 +286,8 @@ class ELivrosDownloader(Scraper):
             except:
                 pass
 
-    def _move_valid_downloads(self):
-        """
-        Moves only valid files to the main download folder.
-
-        Returns valid filenames. It may be an empty list if there's none.
-        """
-
-        moved_filepaths = []
-        main_folder_filepaths = [os.path.join(self.download_path, filename) for filename in self._get_download_dir()]
-        downloaded_filepaths = [os.path.join(self.temp_download_path, filename)
-                                for filename in self.downloaded_filenames]
-
-        # Very important!
-        duplicates = self.scraper_helper.check_for_duplicate_files(downloaded_filepaths, main_folder_filepaths)
-
-        for filename in self.downloaded_filenames:
-            file_temp_path = os.path.join(self.temp_download_path, filename)
-            file_main_path = os.path.join(self.download_path, filename)
-
-            try:
-                if file_temp_path not in duplicates:
-                    shutil.move(file_temp_path, file_main_path)
-                    moved_filepaths.append(file_main_path)
-            except IOError as e:
-                logging.error("Error while moving file: ")
-                logging.error(f"File: {file_temp_path}")
-                logging.error(e, exc_info=True)
-                continue
-
-        return moved_filepaths
-
-    def get_scraper_metadata(self) -> ElivrosMetadata:
+    def get_metadata(self) -> LibgenMetadata:
         return self.metadata
-
-    def build_upload_entry(self, file_paths: list[str]) -> LibgenMetadata:
-        if self.metadata is None:
-            raise ScraperError("Metadata is None. Can't parse it to LibgenMetadata")
-
-        try:
-            # Elivros adds their own watermark on files, making libgen uploader detect these files as having
-            # "elivros.love" as publisher. This is invalid and we want to avoid that.
-
-            up_entry = LibgenMetadata(**self.metadata.dict(),
-                                      filepaths=file_paths,
-                                      source=AvailableSources.elivros,
-                                      publisher="")
-
-        except ValidationError as e:
-            logging.error(f"Error while converting metadata '{self.metadata} to "
-                          f"LibenMetadata. Scraping downloads. {e}", exc_info=True)
-
-            raise ScraperError(
-                f"Error while converting metadata '{self.metadata} to an UploadEntry. Scraping downloads'")
-
-        return up_entry
-
-    def append_to_queue(self, upload_entry: LibgenMetadata):
-
-        try:
-            self._remove_files(self._get_temp_download_dir())
-            self._clean_temp_files()
-            self.queue_service.add_to_queue(upload_entry)
-
-        except UploadQueueError as e:
-            self._remove_files(self._get_temp_download_dir())
-            raise e
 
     def make_download(self, driver: WebDriver):
         """
@@ -379,18 +299,25 @@ class ELivrosDownloader(Scraper):
 
         throws ScraperError
         """
+
         self.driver = driver
-        self._clean_temp_files()
+        self._clean_temp_downloads()
         self.old_downloads = self._get_temp_download_dir()
 
         self.navigate()
+        navigated_url = self.driver.current_url
         tab_handler = self._prepare_download_monitor()
         main_page = tab_handler[0]
         downloads_page = tab_handler[1]
 
         soup = self._parse_html()
         self.metadata = self.get_book_info(soup)
-        navigated_url = self.driver.current_url
+        self.first_run = False
+
+        if self.history_service.exists_on_download_history(self.metadata):
+            logging.warning(f"URL '{navigated_url}' points to a metadata in queue or upload history. Skipping.")
+            raise ScraperError("Current URL points to a metadata in queue or upload history. Skipping.")
+
         self._start_downloading()
 
         elapsed_time = 0
@@ -405,16 +332,17 @@ class ELivrosDownloader(Scraper):
         self.driver.switch_to.window(main_page)
         self.elapsed_time = elapsed_time
 
-        self.downloaded_filenames = self._find_newly_added_files()
-        valid_file_paths = self._move_valid_downloads()
+        self.downloaded_filepaths = self._find_newly_added_files()
 
-        if len(self.downloaded_filenames) == 0 or len(valid_file_paths) == 0:
-            logging.error(fr"Downloading failed for URL: {navigated_url}")
-            raise ScraperError("No new file has been downloaded")
+        if len(self.downloaded_filepaths) == 0:
+            logging.error(fr"Downloading failed for URL: {navigated_url}. Files may be duplicates")
+            raise ScraperError("Downloading failed for URL: {navigated_url}. Files may be duplicates")
 
-        logging.info(f"Downloaded files '{self.downloaded_filenames}' from {navigated_url} in "
+        logging.info(f"Downloaded files '{self.downloaded_filepaths}' from {navigated_url} in "
                      f"{self.elapsed_time} seconds.")
-        logging.info(f"Files have been stored in {valid_file_paths}.")
+        logging.info(f"Files have been temporarily stored in {self.downloaded_filepaths}.")
 
-        upload_entry = self.build_upload_entry(valid_file_paths)
-        self.append_to_queue(upload_entry)
+        history_entry = DownloadHistoryEntry(metadata=self.metadata, stored_at=self.downloaded_filepaths)
+        self.history_service.add_to_download_history(history_entry)
+
+        self._clean_temp_downloads()
