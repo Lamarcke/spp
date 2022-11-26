@@ -1,10 +1,10 @@
 [tool.poetry]
-name = "biblioterra-scraper"
+name = "spp"
 version = "0.1.0"
 description = ""
 authors = ["lamarcke <cassiolamarcksilvafreitas@gmail.com>"]
 readme = "README.md"
-packages = [{include = "scrapers_preservation"}]
+packages = []
 
 [tool.poetry.dependencies]
 python = "^3.10"
@@ -15,6 +15,7 @@ python-dotenv = "^0.21.0"
 inquirer = "^2.10.1"
 pyfiglet = "^0.8.post1"
 yaspin = "^2.2.0"
+mypy = "^0.991"
 
 
 [build-system]

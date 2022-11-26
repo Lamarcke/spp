@@ -7,7 +7,3 @@ if __name__ == '__main__':
     logging_setup()
     spp = SPPMenu()
     spp.start()
-
-
-
-
