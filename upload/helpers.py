@@ -15,6 +15,7 @@ class UploadHelper:
         file_path.encode("UTF-8")
         return os.path.isfile(file_path)
 
+
     def _is_extension_valid(self, file_path: str):
         if file_path.endswith(self.valid_extensions):
             return True
