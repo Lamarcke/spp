@@ -16,6 +16,9 @@ inquirer = "^2.10.1"
 pyfiglet = "^0.8.post1"
 yaspin = "^2.2.0"
 mypy = "^0.991"
+flake8 = "^6.0.0"
+setuptools = "^65.6.3"
+pylint = "^2.15.7"
 
 
 [build-system]

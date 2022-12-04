@@ -1,7 +1,5 @@
 import os
 import sqlite3
-from contextlib import contextmanager
-from sqlite3 import Connection
 
 
 def setup_temp_download_folder() -> str:
@@ -39,7 +37,7 @@ def sqlite_conn():
     conn = sqlite3.connect(db_abs_path)
     return conn
 
-def setup_db():
+def db_setup():
     with sqlite_conn() as conn:
         cursor = conn.cursor()
         cursor.execute("""CREATE TABLE IF NOT EXISTS spp(id INTEGER PRIMARY KEY, 
