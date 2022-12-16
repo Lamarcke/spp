@@ -1,7 +1,10 @@
 import os
 import sqlite3
 
-
+def setup_data_folder():
+    print(os.path.abspath("data"))
+    if not os.path.isdir("data"):
+        os.mkdir("data")
 def setup_temp_download_folder() -> str:
     temp_download_folder = os.environ.get("TEMP_DOWNLOAD_FOLDER")
 
@@ -35,6 +38,7 @@ def sqlite_conn():
     db_path = os.path.sep.join(("data", "spp.db"))
     db_abs_path = os.path.abspath(db_path)
     conn = sqlite3.connect(db_abs_path)
+
     return conn
 
 def db_setup():

@@ -33,12 +33,3 @@ class HistoryHandler:
             metadata_str = self.stringfy_metadata(metadata)
             cursor = conn.cursor()
             cursor.execute("INSERT INTO spp (metadata, )")
-            
-            
-            
-
-
-
-
-
-

@@ -19,7 +19,6 @@ from exceptions.exceptions import ScraperError
 from models.history_models import DownloadHistoryEntry
 from scrapers.helpers import ScraperHelper
 from models.uploader_models import ValidTopics, LibgenMetadata, AvailableSources
-from upload import HistoryHandler
 
 
 class ELivrosDownloader:
@@ -28,7 +27,7 @@ class ELivrosDownloader:
 
         self._base_url = r"https://elivros.love"
         self._rand_book_url = "http://elivros.love/page/RandomBook"
-        self.history_service = HistoryHandler()
+        # self.history_service = HistoryHandler()
         self.first_run = True
         self.scraper_helper = ScraperHelper()
         self.temp_download_path = setup_temp_download_folder()

@@ -13,8 +13,7 @@ from exceptions import HistoryError, HistoryFileError, UploaderHumanConfirmation
     UploaderError, UploaderFileError
 from models.uploader_models import LibgenMetadata, ValidTopics, UploadMetadataElements, \
     AvailableSources
-from config import setup_download_folder, setup_upload_history
-from upload import HistoryHandler
+from config import setup_download_folder
 from upload.helpers import UploadHelper
 
 
@@ -34,9 +33,9 @@ class LibgenUpload:
         self.fiction_upload = f"https://{self.username}:{self.password}@library.bz/fiction/upload/"
         self.current_file_path: str | None = None
         self.upload_helper = UploadHelper()
-        self.upload_queue = HistoryHandler()
+        # self.upload_queue = HistoryHandler()
         self.download_path = setup_download_folder()
-        self.upload_history_path = setup_upload_history()
+        # self.upload_history_path = setup_upload_history()
         self.temp_upload_history_path = os.path.abspath(r".\temp_upload_history.txt")
         self.valid_extensions = ("epub", "pdf", "mobi")
 
