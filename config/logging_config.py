@@ -1,5 +1,5 @@
 import logging
-import os.path
+import os
 from selenium.webdriver.remote.remote_connection import LOGGER
 
 # Reduce the level of selenium's logger.

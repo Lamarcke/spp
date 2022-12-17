@@ -10,8 +10,10 @@ class SPPMenuOptions(BaseModel):
     scraping = SPPScraperMenu().start
     settings = ""
     exit = ""
+
     class Config:
         arbitrary_types_allowed = True
+
 
 class SPPMenu:
     def __init__(self):
@@ -31,10 +33,12 @@ class SPPMenu:
             print("You can use CTRL + C to exit anytime.")
 
             menu = inquirer.list_input("Choose one option", choices=self.start_choices)
+            menu()
 
     def start(self):
         self.run = True
         self._show_start_menu()
 
     def stop(self):
+        # To be implemented.
         self.run = False

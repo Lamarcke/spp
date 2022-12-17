@@ -224,3 +224,4 @@ temp/*
 # SPP downloaded content
 data/temp/*
 data/downloads/*
+data/spp.db
