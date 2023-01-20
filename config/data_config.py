@@ -5,42 +5,21 @@ import sqlite3
 from models.settings_models import SPPSettingsModel
 
 
-def setup_data(user_settings: SPPSettingsModel):
-    pass
-
-
-def load_user_settings_file() -> SPPSettingsModel:
-    default_settings = SPPSettingsModel()
-    settings_path = os.path.abspath("spp_settings.json")
-    if not os.path.isfile(settings_path):
-        default_settings_json = default_settings.json()
-        with open(settings_path) as f:
-            f.write(default_settings_json)
-        return default_settings
-
-    with open(settings_path) as f:
-        user_settings_json = json.load(f)
-        user_settings = SPPSettingsModel(**user_settings_json)
-        return user_settings
-    
-def load_user_settings():
-    final_user_settings = load_user_settings_file()
-    
-
-def sqlite_conn():
+def _sqlite_conn():
     """
     Use this as a context manager.
     """
-    db_path = os.path.sep.join(("data", "spp.db"))
-    db_abs_path = os.path.abspath(db_path)
-    conn = sqlite3.connect(db_abs_path)
+    user_settings = load_user_settings()
+    db_path = user_settings.history_db_path
+    conn = sqlite3.connect(db_path)
 
     return conn
 
 
-def setup_db():
-    with sqlite_conn() as conn:
-        cursor = conn.cursor()
+def sqlite_conn_setup():
+    conn = _sqlite_conn()
+    with conn as conn_ctx:
+        cursor = conn_ctx.cursor()
         cursor.execute(
             """CREATE TABLE IF NOT EXISTS spp(id INTEGER PRIMARY KEY,
                                                          metadata TEXT, 
@@ -48,3 +27,35 @@ def setup_db():
                                                          uploaded INTEGER DEFAULT 0,
                                                          uploaded_at TEXT DEFAULT NULL)"""
         )
+    return conn
+
+
+def _validate_user_settings(settings: SPPSettingsModel):
+    download_path = settings.downloads_path
+    temp_download_path = settings.temp_downloads_path
+    if not os.path.isdir(download_path):
+        os.mkdir(os.path.abspath(download_path))
+
+    if not os.path.isdir(temp_download_path):
+        os.mkdir(os.path.abspath(temp_download_path))
+
+
+def load_user_settings() -> SPPSettingsModel:
+    default_settings = SPPSettingsModel()
+    settings_path = os.path.abspath("spp_settings.json")
+    if not os.path.isfile(settings_path):
+        default_settings_json = default_settings.json()
+        with open(settings_path, "w+") as f:
+            f.write(default_settings_json)
+
+        if not os.path.isdir(os.path.abspath("data")):
+            os.mkdir(os.path.abspath("data"))
+
+        _validate_user_settings(default_settings)
+        return default_settings
+
+    with open(settings_path) as f:
+        user_settings_json = json.load(f)
+        user_settings = SPPSettingsModel(**user_settings_json)
+        _validate_user_settings(user_settings)
+        return user_settings

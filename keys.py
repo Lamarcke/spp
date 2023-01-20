@@ -1,3 +1,7 @@
-from config.data_config import sqlite_conn
+from json import load
 
-sqlite_instance = sqlite_conn()
+from dotenv import load_dotenv
+
+from config.data_config import sqlite_conn_setup
+
+sqlite_instance = sqlite_conn_setup()

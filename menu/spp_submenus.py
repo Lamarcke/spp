@@ -9,10 +9,9 @@ from routines import elivros_downloader
 class SPPScraperMenu:
 
     def _handle_scraper_choice(self, choice: str):
-        os.system("cls")
+        os.system("clear")
 
         if choice == AvailableSources.elivros:
-
             print(f"Starting {AvailableSources.elivros.value} scraper")
             print("You may close the scraper at any time by pressing CTRL + C"
                   "")

@@ -20,6 +20,3 @@ def logging_setup():
     # Allowing debug logs will also log selenium stuff in the file.
     logging.basicConfig(filename=logging_file, encoding="UTF-8", format=_format, level=logging.INFO, datefmt=date_fmt)
     print(f"Logging in file: ", logging_file)
-
-
-logging_setup()

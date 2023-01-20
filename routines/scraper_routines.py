@@ -2,9 +2,8 @@ import time
 
 from selenium.common import WebDriverException
 
-from config import setup_driver
+from config.driver_config import driver_setup
 from scrapers import ELivrosDownloader
-from exceptions import ScraperError
 
 
 def elivros_downloader(tries: int = 0):
@@ -15,7 +14,7 @@ def elivros_downloader(tries: int = 0):
     If set to 0, will run indefinitely.
     """
     scraper = ELivrosDownloader()
-    driver = setup_driver()
+    driver = driver_setup()
 
     iterations = 0
 
@@ -26,17 +25,5 @@ def elivros_downloader(tries: int = 0):
 
             iterations += 1
 
-        try:
-            scraper.make_download(driver)
-
-        except WebDriverException as e:
-            scraper = ELivrosDownloader()
-            driver = setup_driver()
-            print(e)
-            continue
-
-        except KeyboardInterrupt:
-            break
-
-        except BaseException as e:
-            print(e)
+        scraper.make_download(driver)
+        break

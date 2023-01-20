@@ -1,15 +1,13 @@
 from dotenv import load_dotenv
 
-from config import logging_setup, setup_db
-from config.data_config import setup_data_folder
+from config import logging_setup
 from menu import SPPMenu
+import keys
 
 
 def spp_setup():
     load_dotenv()
-    setup_data_folder()
     logging_setup()
-    setup_db()
 
 
 if __name__ == '__main__':
