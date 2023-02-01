@@ -34,11 +34,6 @@ class LibgenMetadata(BaseModel):
     source: AvailableSources  # Source for metadata and uploading.
 
 
-class UploadQueueEntry(BaseModel):
-    metadata: LibgenMetadata
-    stored_at: list[str] = Field(..., min_length=1)
-
-
 class UploadMetadataElements(BaseModel):
     title: WebElement
     authors: WebElement

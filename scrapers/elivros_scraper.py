@@ -13,6 +13,7 @@ from selenium.webdriver.support import expected_conditions as EC
 import time
 
 from selenium.webdriver.support.wait import WebDriverWait
+from yaspin import yaspin
 
 from config.data_config import load_user_settings
 from exceptions.exceptions import ScraperError
@@ -59,17 +60,16 @@ class ELivrosDownloader:
             if filename not in old_downloads and filename.endswith(self.valid_extensions):
                 downloaded_filenames.append(filename)
 
-        print("Downloaded filenames: ", downloaded_filenames)
-
         file_paths = [os.path.join(self.download_path, f_name) for f_name in downloaded_filenames]
 
         return file_paths
 
     def _parse_html(self) -> BeautifulSoup:
         # Wait until page is loaded.
-        WebDriverWait(self.driver, 3).until(EC.visibility_of_element_located((By.CSS_SELECTOR,
-                                                                              ".SerieAut")))
+        info_element_locator = (By.CSS_SELECTOR, ".SerieAut")
+        WebDriverWait(self.driver, 3).until(EC.visibility_of_element_located(info_element_locator))
         soup = BeautifulSoup(self.driver.page_source, "lxml")
+
         return soup
 
     @staticmethod
@@ -131,8 +131,10 @@ class ELivrosDownloader:
                     logging.error(
                         f"Authors: {authors_series_info[1].get_text()}, Pages: {authors_series_info[2].get_text()}")
                     logging.error(f"Number of elements: {len(authors_series_info)}")
-                    raise ScraperError("Wrong value defined for Series, check logs.")
-                series_el = authors_series_info[0]
+                    series_el = None
+                else:
+                    series_el = authors_series_info[0]
+
                 authors_el = authors_series_info[1]
                 pages_el = authors_series_info[2]
 
@@ -218,7 +220,7 @@ class ELivrosDownloader:
         for index, el in enumerate([epub_el, pdf_el, mobi_el]):
             try:
                 el.send_keys(Keys.RETURN)
-                time.sleep(2)
+                time.sleep(4)
 
             except:
                 pass
@@ -240,39 +242,51 @@ class ELivrosDownloader:
         self.driver = driver
         self.old_downloads = self._get_download_dir()
 
-        self.navigate()
-        navigated_url = self.driver.current_url
+        with yaspin(text=f"Downloading book") as spinner:
 
-        soup = self._parse_html()
-        self.metadata = self.get_book_info(soup)
+            spinner.write("Navigating to random")
+            self.navigate()
+            navigated_url = self.driver.current_url
+            spinner.write(f"Downloading from {navigated_url}")
+            spinner.write("Retrieving metadata")
+            soup = self._parse_html()
+            self.metadata = self.get_book_info(soup)
 
-        if self.history_service.check_duplicate(self.metadata):
-            logging.warning(f"URL '{navigated_url}' points to a metadata in queue or upload history. Skipping.")
-            raise ScraperError("Current URL points to a metadata in queue or upload history. Skipping.")
+            spinner.write("Checking for duplicates")
+            if self.history_service.check_duplicate(self.metadata):
+                logging.warning(f"URL '{navigated_url}' points to a metadata in queue or upload history. Skipping.")
+                raise ScraperError("Current URL points to a metadata in queue or upload history. Skipping.")
 
-        self._start_downloading()
+            spinner.write("Starting download")
+            self._start_downloading()
 
-        elapsed_time = 0
-        seconds_per_iteration = 3
-        done = False
+            elapsed_time = 0
+            seconds_per_iteration = 2
+            done = False
 
-        while not done:
-            time.sleep(seconds_per_iteration)
-            done = self._monitor_chrome_downloads()
+            while not done:
+                time.sleep(seconds_per_iteration)
+                done = self._monitor_chrome_downloads()
 
-            elapsed_time += seconds_per_iteration
+                elapsed_time += seconds_per_iteration
 
-        self.elapsed_time = elapsed_time
+            self.elapsed_time = elapsed_time
 
-        self.downloaded_filepaths = self._find_newly_added_files(self.old_downloads)
+            self.downloaded_filepaths = self._find_newly_added_files(self.old_downloads)
 
-        if len(self.downloaded_filepaths) == 0:
-            logging.error(fr"Downloading failed for URL: {navigated_url}.")
-            raise ScraperError("Downloading failed for URL: {navigated_url}.")
+            if len(self.downloaded_filepaths) == 0:
+                logging.error(fr"Downloading failed for URL: {navigated_url}.")
+                spinner.fail("Downloading failed. Check logs for more info.")
+                raise ScraperError(fr"Downloading failed for URL: {navigated_url}.")
 
-        logging.info(f"Downloaded files '{self.downloaded_filepaths}' from {navigated_url} in "
-                     f"{self.elapsed_time} seconds.")
-        logging.info(f"Files have been stored in {self.downloaded_filepaths}.")
+            spinner.write(f"Finished downloading {len(self.downloaded_filepaths)}")
 
-        for path in self.downloaded_filepaths:
-            self.history_service.add_to_history(self.metadata, path)
+            logging.info(f"Downloaded files '{self.downloaded_filepaths}' from {navigated_url} in "
+                         f"{self.elapsed_time} seconds.")
+            logging.info(f"Files have been stored in {self.downloaded_filepaths}.")
+
+            for path in self.downloaded_filepaths:
+                self.history_service.add_to_history(self.metadata, path)
+                spinner.write(f"Added {path} to history.")
+
+            spinner.ok("✔")
