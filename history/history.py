@@ -15,17 +15,18 @@ class HistoryHandler:
         self.db_conn = sqlite_instance
         self.valid_extensions = ("epub", "pdf", "mobi")
 
-    @staticmethod
-    def _remove_file(file_path: str):
+    def _remove_file(self, file_path: str):
         try:
             os.remove(file_path)
         except (OSError, FileNotFoundError):
             logging.error(f"Could not remove file {file_path}")
 
-    @staticmethod
-    def _is_path_valid(file_path: str):
+    def _is_path_valid(self, file_path: str):
         file_path.encode("UTF-8")
-        return os.path.isfile(file_path)
+        if os.path.exists(file_path) and os.path.isfile(file_path):
+            return True
+
+        return False
 
     def _is_extension_valid(self, file_path: str):
         if file_path.endswith(self.valid_extensions):
@@ -84,11 +85,17 @@ class HistoryHandler:
         with self.db_conn as conn:
             cursor = conn.cursor()
             cursor.execute("SELECT COUNT(*) FROM spp WHERE uploaded=0")
-            return cursor.fetchone()[0]
+            count = cursor.fetchone()
+            return count[0]
 
     def get_uploadable_history(self) -> Generator[HistoryEntry, None, None]:
         with self.db_conn as conn:
             cursor = conn.cursor()
+            count = self.get_num_uploadable_entries()
+            if count == 0:
+                logging.info("No files to upload.")
+                raise FileNotFoundError("No files to upload.")
+
             for row in cursor.execute("SELECT id, metadata, filepath, uploaded, uploaded_at "
                                       "FROM spp WHERE uploaded=0"):
                 entry_id = row[0]
@@ -124,7 +131,14 @@ class HistoryHandler:
             metadata_str = self.stringfy_metadata(metadata)
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO spp (metadata, filepath) VALUES (?, ?)", (metadata_str, file_path))
+                "INSERT INTO spp (metadata, filepath, uploaded) VALUES (?, ?, ?)", (metadata_str, file_path, 0))
+
+            last_id = cursor.lastrowid
+            cursor.execute("SELECT id, metadata, filepath FROM spp WHERE id=?", (last_id,))
+            added_entry = cursor.fetchone()
+            if added_entry is None or added_entry[1] != metadata_str or added_entry[2] != file_path:
+                logging.error(f"Could not add entry to history.")
+                raise HistoryError("Could not add entry to history.")
 
         logging.info(f"Added {file_path} to history.")
 

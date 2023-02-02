@@ -40,6 +40,12 @@ class ELivrosDownloader:
         self.fiction_categories = ["Ficção", "Aventura", "Romance",
                                    "Contos", "Infanto", "Policial", "Humor", "Poemas", "Suspense"]
 
+    def _remove_invalid_file(self, file_path: str):
+        try:
+            os.remove(file_path)
+        except (OSError, FileNotFoundError):
+            logging.error(f"Could not remove file {file_path}")
+
     def _get_download_dir(self):
         return os.listdir(self.download_path)
 
@@ -201,6 +207,8 @@ class ELivrosDownloader:
     def navigate(self):
         # Takes the driver to the correct url for downloading.
         self.driver.get(self._rand_book_url)
+        if self.first_run:
+            self.driver.get(self._rand_book_url)
 
     def _start_downloading(self):
         print("Starting download...")
@@ -286,7 +294,13 @@ class ELivrosDownloader:
             logging.info(f"Files have been stored in {self.downloaded_filepaths}.")
 
             for path in self.downloaded_filepaths:
-                self.history_service.add_to_history(self.metadata, path)
+                try:
+                    self.history_service.add_to_history(self.metadata, path)
+                except Exception as e:
+                    logging.error(f"Failed to add {path} to history.")
+                    logging.error(e, exc_info=True)
+                    self._remove_invalid_file(path)
+
                 spinner.write(f"Added {path} to history.")
 
             spinner.ok("✔")

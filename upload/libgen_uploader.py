@@ -47,7 +47,7 @@ class LibgenUploadHandler:
 
         form_error_text = form_error.text
         print(form_error_text)
-        if form_error_text.find("already added") != -1:
+        if form_error_text.find("already") != -1:
             logging.error(f"Libgen has deemed file as a duplicate on {self.current_metadata.topic} collection.")
             logging.error(f"File info: {self.current_file_path}")
             print(f"Libgen has deemed file a duplicate on {self.current_metadata.topic} collection.")
@@ -194,7 +194,17 @@ class LibgenUploadHandler:
 
         uploadable_history = self.history_handler.get_uploadable_history()
 
+        count_uploadable_entries = self.history_handler.get_num_uploadable_entries()
+        if count_uploadable_entries == 0:
+            logging.info("No uploadable entries in history.")
+            print("No uploadable entries in history.")
+            return
+
         for entry in uploadable_history:
+
+            if entry is None:
+                continue
+
             with yaspin(text="Uploading file", color="yellow") as spinner:
                 spinner.write(f"Uploading file: {entry.file_path}")
                 self.current_metadata = entry.metadata

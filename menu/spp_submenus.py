@@ -46,6 +46,9 @@ class SPPUploadMenu:
     def _show_upload_menu(self):
         while True:
             os.system("clear")
+            print("Starting uploader")
+            print("SPP will upload all valid files in history that are not already uploaded.")
+            print("You may close the uploader at any time by pressing CTRL + C")
             libgen_uploader()
 
     def start(self):
