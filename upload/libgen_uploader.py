@@ -192,13 +192,15 @@ class LibgenUploadHandler:
 
         self.driver = driver
 
-        uploadable_history = self.history_handler.get_uploadable_history()
 
         count_uploadable_entries = self.history_handler.get_num_uploadable_entries()
         if count_uploadable_entries == 0:
             logging.info("No uploadable entries in history.")
             print("No uploadable entries in history.")
             return
+        
+        uploadable_history = self.history_handler.get_uploadable_history()
+        
 
         for entry in uploadable_history:
 
