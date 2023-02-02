@@ -22,7 +22,6 @@ from history import HistoryHandler
 
 
 class ELivrosDownloader:
-
     def __init__(self):
 
         self._base_url = r"https://elivros.love"
@@ -37,8 +36,17 @@ class ELivrosDownloader:
         self.elapsed_time: int | None = None
         self.old_downloads: list[str] = []
         self.downloaded_filepaths: list[str] = []
-        self.fiction_categories = ["Ficção", "Aventura", "Romance",
-                                   "Contos", "Infanto", "Policial", "Humor", "Poemas", "Suspense"]
+        self.fiction_categories = [
+            "Ficção",
+            "Aventura",
+            "Romance",
+            "Contos",
+            "Infanto",
+            "Policial",
+            "Humor",
+            "Poemas",
+            "Suspense",
+        ]
 
     def _remove_invalid_file(self, file_path: str):
         try:
@@ -63,17 +71,23 @@ class ELivrosDownloader:
 
         downloaded_filenames = []
         for filename in downloads:
-            if filename not in old_downloads and filename.endswith(self.valid_extensions):
+            if filename not in old_downloads and filename.endswith(
+                self.valid_extensions
+            ):
                 downloaded_filenames.append(filename)
 
-        file_paths = [os.path.join(self.download_path, f_name) for f_name in downloaded_filenames]
+        file_paths = [
+            os.path.join(self.download_path, f_name) for f_name in downloaded_filenames
+        ]
 
         return file_paths
 
     def _parse_html(self) -> BeautifulSoup:
         # Wait until page is loaded.
         info_element_locator = (By.CSS_SELECTOR, ".SerieAut")
-        WebDriverWait(self.driver, 3).until(EC.visibility_of_element_located(info_element_locator))
+        WebDriverWait(self.driver, 3).until(
+            EC.visibility_of_element_located(info_element_locator)
+        )
         soup = BeautifulSoup(self.driver.page_source, "lxml")
 
         return soup
@@ -104,12 +118,17 @@ class ELivrosDownloader:
             self.driver.get(download_url)
 
         # The only way to get elements from chrome's downloads list reasonably.
-        downloads: list[dict] = self.driver.execute_script("""
+        downloads: list[dict] = self.driver.execute_script(
+            """
         var items = document.querySelector('downloads-manager')
             .shadowRoot.getElementById('downloadsList').items;
         return items;
         
-        """)
+        """
+        )
+
+        if len(downloads) == 0:
+            raise ScraperError("No downloads where started.")
 
         return self._are_chrome_downloads_done(downloads)
 
@@ -135,7 +154,8 @@ class ELivrosDownloader:
                     logging.error("Tried to add non-series value to series field.")
                     logging.error(f"Invalid value: {first_el_text}, other values:")
                     logging.error(
-                        f"Authors: {authors_series_info[1].get_text()}, Pages: {authors_series_info[2].get_text()}")
+                        f"Authors: {authors_series_info[1].get_text()}, Pages: {authors_series_info[2].get_text()}"
+                    )
                     logging.error(f"Number of elements: {len(authors_series_info)}")
                     series_el = None
                 else:
@@ -170,27 +190,33 @@ class ELivrosDownloader:
             except (TypeError, ValueError):
                 logging.error("Tried to convert invalid element to page int.")
                 logging.error("Elements are:")
-                logging.error(f"Title is: {title_el.get_text()}, "
-                              f"authors is: {authors_el.get_text()}, "
-                              f"pages is: {pages_el.get_text()}, "
-                              f"series is: {series_el}, "
-                              f"and number of elements is {len(authors_series_info)}")
-                raise ScraperError("Invalid order for elements. Page element is not int. "
-                                   "Check logs for more info.")
+                logging.error(
+                    f"Title is: {title_el.get_text()}, "
+                    f"authors is: {authors_el.get_text()}, "
+                    f"pages is: {pages_el.get_text()}, "
+                    f"series is: {series_el}, "
+                    f"and number of elements is {len(authors_series_info)}"
+                )
+                raise ScraperError(
+                    "Invalid order for elements. Page element is not int. "
+                    "Check logs for more info."
+                )
         else:
             pages_text = None
 
         book_descr_el = soup.select_one("div.description > div.sinopse")
 
         try:
-            metadata = LibgenMetadata(title=title_el.get_text(),
-                                      authors=authors_el.get_text(),
-                                      language="Portuguese",
-                                      series=series_el,
-                                      description=book_descr_el.get_text(),
-                                      pages=pages_text,
-                                      topic=topic,
-                                      source=AvailableSources.elivros)
+            metadata = LibgenMetadata(
+                title=title_el.get_text(),
+                authors=authors_el.get_text(),
+                language="Portuguese",
+                series=series_el,
+                description=book_descr_el.get_text(),
+                pages=pages_text,
+                topic=topic,
+                source=AvailableSources.elivros,
+            )
         except ValidationError as e:
             logging.error(e, exc_info=True)
             raise ScraperError(e)
@@ -198,10 +224,15 @@ class ELivrosDownloader:
         return metadata
 
     def _get_random_page(self):
-        WebDriverWait(self.driver, 5).until(EC.element_to_be_clickable(
-            (By.CSS_SELECTOR, "#metop > ul > li:nth-child(5) > a")))
+        WebDriverWait(self.driver, 5).until(
+            EC.element_to_be_clickable(
+                (By.CSS_SELECTOR, "#metop > ul > li:nth-child(5) > a")
+            )
+        )
 
-        random_el = self.driver.find_element(By.CSS_SELECTOR, "#metop > ul > li:nth-child(5) > a")
+        random_el = self.driver.find_element(
+            By.CSS_SELECTOR, "#metop > ul > li:nth-child(5) > a"
+        )
         random_el.send_keys(Keys.RETURN)
 
     def navigate(self):
@@ -211,19 +242,30 @@ class ELivrosDownloader:
             self.driver.get(self._rand_book_url)
 
     def _start_downloading(self):
-        print("Starting download...")
-        WebDriverWait(
-            self.driver, 3).until(EC.element_to_be_clickable((By.CSS_SELECTOR, "#bookinfo > div.info > "
-                                                                               "div.downloads > "
-                                                                               "a.mainDirectLink.epub")))
-        epub_el = self.driver.find_element(By.CSS_SELECTOR,
-                                           "#bookinfo > div.info > div.downloads > a.mainDirectLink.epub")
+        WebDriverWait(self.driver, 3).until(
+            EC.element_to_be_clickable(
+                (
+                    By.CSS_SELECTOR,
+                    "#bookinfo > div.info > "
+                    "div.downloads > "
+                    "a.mainDirectLink.epub",
+                )
+            )
+        )
+        epub_el = self.driver.find_element(
+            By.CSS_SELECTOR,
+            "#bookinfo > div.info > div.downloads > a.mainDirectLink.epub",
+        )
 
-        pdf_el = self.driver.find_element(By.CSS_SELECTOR,
-                                          "#bookinfo > div.info > div.downloads > a.mainDirectLink.pdf")
+        pdf_el = self.driver.find_element(
+            By.CSS_SELECTOR,
+            "#bookinfo > div.info > div.downloads > a.mainDirectLink.pdf",
+        )
 
-        mobi_el = self.driver.find_element(By.CSS_SELECTOR,
-                                           "#bookinfo > div.info > div.downloads > a.mainDirectLink.mobi")
+        mobi_el = self.driver.find_element(
+            By.CSS_SELECTOR,
+            "#bookinfo > div.info > div.downloads > a.mainDirectLink.mobi",
+        )
 
         for index, el in enumerate([epub_el, pdf_el, mobi_el]):
             try:
@@ -262,10 +304,14 @@ class ELivrosDownloader:
 
             spinner.write("Checking for duplicates")
             if self.history_service.check_duplicate(self.metadata):
-                logging.warning(f"URL '{navigated_url}' points to a metadata in queue or upload history. Skipping.")
-                raise ScraperError("Current URL points to a metadata in queue or upload history. Skipping.")
+                logging.warning(
+                    f"URL '{navigated_url}' points to a metadata in queue or upload history. Skipping."
+                )
+                raise ScraperError(
+                    "Current URL points to a metadata in queue or upload history. Skipping."
+                )
 
-            spinner.write("Starting download")
+            spinner.write("Starting download...")
             self._start_downloading()
 
             elapsed_time = 0
@@ -283,24 +329,35 @@ class ELivrosDownloader:
             self.downloaded_filepaths = self._find_newly_added_files(self.old_downloads)
 
             if len(self.downloaded_filepaths) == 0:
-                logging.error(fr"Downloading failed for URL: {navigated_url}.")
+                logging.error(rf"Downloading failed for URL: {navigated_url}.")
                 spinner.fail("Downloading failed. Check logs for more info.")
-                raise ScraperError(fr"Downloading failed for URL: {navigated_url}.")
+                raise ScraperError(rf"Downloading failed for URL: {navigated_url}.")
 
-            spinner.write(f"Finished downloading {len(self.downloaded_filepaths)}")
+            spinner.write(
+                f"Finished downloading {len(self.downloaded_filepaths)} files in {self.elapsed_time} seconds."
+            )
 
-            logging.info(f"Downloaded files '{self.downloaded_filepaths}' from {navigated_url} in "
-                         f"{self.elapsed_time} seconds.")
+            logging.info(
+                f"Downloaded files '{self.downloaded_filepaths}' from {navigated_url} in "
+                f"{self.elapsed_time} seconds."
+            )
             logging.info(f"Files have been stored in {self.downloaded_filepaths}.")
 
+            successful_attempts = 0
             for path in self.downloaded_filepaths:
                 try:
                     self.history_service.add_to_history(self.metadata, path)
+                    spinner.write(f"Added {path} to history.")
+                    successful_attempts += 1
                 except Exception as e:
                     logging.error(f"Failed to add {path} to history.")
                     logging.error(e, exc_info=True)
                     self._remove_invalid_file(path)
+                    spinner.write(
+                        f"Warning: Failed to add {path} to history. Check logs."
+                    )
 
-                spinner.write(f"Added {path} to history.")
+            if successful_attempts == 0:
+                spinner.fail("❌")
 
             spinner.ok("✔")

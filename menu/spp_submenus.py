@@ -18,8 +18,7 @@ class SPPScraperMenu:
 
         if choice == AvailableSources.elivros:
             print(f"Starting {AvailableSources.elivros.value} scraper")
-            print("You may close the scraper at any time by pressing CTRL + C"
-                  "")
+            print("You may close the scraper at any time by pressing CTRL + C" "")
             elivros_downloader(self.max_downloads_num)
 
     def _show_scraper_menu(self):
@@ -29,11 +28,13 @@ class SPPScraperMenu:
         while True:
             os.system("clear")
             print("Please choose the source which you want to scrap:")
-            print("The scraper will download files and relevants metadata to the download folder.")
+            print(
+                "The scraper will download files and relevants metadata to the download folder."
+            )
             print("If none is set, SPP will use the default /data/downloads folder.")
             choice = inquirer.list_input("Start scraping", choices=self.choices)
-
-            self._handle_scraper_choice(choice)
+            if choice:
+                self._handle_scraper_choice(choice)
 
     def start(self):
         self._show_scraper_menu()
@@ -44,12 +45,13 @@ class SPPUploadMenu:
         pass
 
     def _show_upload_menu(self):
-        while True:
-            os.system("clear")
-            print("Starting uploader")
-            print("SPP will upload all valid files in history that are not already uploaded.")
-            print("You may close the uploader at any time by pressing CTRL + C")
-            libgen_uploader()
+        os.system("clear")
+        print("Starting uploader")
+        print(
+            "SPP will upload all valid files in history that are not already uploaded."
+        )
+        print("You may close the uploader at any time by pressing CTRL + C")
+        libgen_uploader()
 
     def start(self):
         self._show_upload_menu()

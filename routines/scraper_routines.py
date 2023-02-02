@@ -17,6 +17,8 @@ def elivros_downloader(max_downloads_num: int = 0):
     history = HistoryHandler()
     driver = driver_setup()
 
+    tries = 0
+
     while True:
 
         if max_downloads_num > 0:
@@ -26,7 +28,16 @@ def elivros_downloader(max_downloads_num: int = 0):
                 print(f"Reached max downloads number ({max_downloads_num}).")
                 break
 
+        # Restart chrome driver every 20 attempts
+        if tries > 0 and tries % 20 == 0:
+            driver = driver_setup()
+            scraper = ELivrosDownloader()
+            history = HistoryHandler()
+            tries = 0
+            continue
+
         try:
+            tries += 1
             scraper.make_download(driver)
 
         except WebDriverException as e:

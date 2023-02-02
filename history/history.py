@@ -10,7 +10,6 @@ from keys import sqlite_instance
 
 
 class HistoryHandler:
-
     def __init__(self):
         self.db_conn = sqlite_instance
         self.valid_extensions = ("epub", "pdf", "mobi")
@@ -40,7 +39,9 @@ class HistoryHandler:
     def load_metadata(self, metadata_str: str) -> dict:
         return json.loads(metadata_str)
 
-    def check_duplicate(self, metadata: LibgenMetadata, file_path: str | None = None) -> bool:
+    def check_duplicate(
+        self, metadata: LibgenMetadata, file_path: str | None = None
+    ) -> bool:
         """
         Checks if a given file is a duplicate.
         :param metadata: metadata of the file
@@ -54,7 +55,9 @@ class HistoryHandler:
             metadata_str = self.stringfy_metadata(metadata)
             cursor = conn.cursor()
             query = cursor.execute(
-                "SELECT metadata, filepath, uploaded FROM spp WHERE metadata=?", (metadata_str,))
+                "SELECT metadata, filepath, uploaded FROM spp WHERE metadata=?",
+                (metadata_str,),
+            )
             possible_values: list[tuple] = query.fetchall()
             for value in possible_values:
                 value_path = value[1]
@@ -74,8 +77,9 @@ class HistoryHandler:
     def get_all_history(self) -> Generator[LibgenMetadata, None, None]:
         with self.db_conn as conn:
             cursor = conn.cursor()
-            for row in cursor.execute("SELECT id, metadata, filepath, uploaded, uploaded_at "
-                                      "FROM spp"):
+            for row in cursor.execute(
+                "SELECT id, metadata, filepath, uploaded, uploaded_at " "FROM spp"
+            ):
                 metadata_str = row[1]
                 metadata = self.load_metadata(metadata_str)
                 metadata_as_model = LibgenMetadata(**metadata)
@@ -96,8 +100,10 @@ class HistoryHandler:
                 logging.info("No files to upload.")
                 raise FileNotFoundError("No files to upload.")
 
-            for row in cursor.execute("SELECT id, metadata, filepath, uploaded, uploaded_at "
-                                      "FROM spp WHERE uploaded=0"):
+            for row in cursor.execute(
+                "SELECT id, metadata, filepath, uploaded, uploaded_at "
+                "FROM spp WHERE uploaded=0"
+            ):
                 entry_id = row[0]
                 metadata_str = row[1]
                 file_path = row[2]
@@ -110,7 +116,9 @@ class HistoryHandler:
                     logging.warning(f"File {file_path} does not exist. Skipping.")
                     continue
 
-                history_entry = HistoryEntry(entry_id=entry_id, file_path=file_path, metadata=metadata_as_model)
+                history_entry = HistoryEntry(
+                    entry_id=entry_id, file_path=file_path, metadata=metadata_as_model
+                )
 
                 yield history_entry
 
@@ -118,7 +126,9 @@ class HistoryHandler:
         if not os.path.isabs(file_path):
             raise HistoryError("File path must be absolute.")
         # Make sure to use inverse (!) boolean logic here.
-        if not self._is_path_valid(file_path) or not self._is_extension_valid(file_path):
+        if not self._is_path_valid(file_path) or not self._is_extension_valid(
+            file_path
+        ):
             raise HistoryError("File path or extension is invalid.")
 
     def add_to_history(self, metadata: LibgenMetadata, file_path: str):
@@ -131,12 +141,20 @@ class HistoryHandler:
             metadata_str = self.stringfy_metadata(metadata)
             cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO spp (metadata, filepath, uploaded) VALUES (?, ?, ?)", (metadata_str, file_path, 0))
+                "INSERT INTO spp (metadata, filepath, uploaded) VALUES (?, ?, ?)",
+                (metadata_str, file_path, 0),
+            )
 
             last_id = cursor.lastrowid
-            cursor.execute("SELECT id, metadata, filepath FROM spp WHERE id=?", (last_id,))
+            cursor.execute(
+                "SELECT id, metadata, filepath FROM spp WHERE id=?", (last_id,)
+            )
             added_entry = cursor.fetchone()
-            if added_entry is None or added_entry[1] != metadata_str or added_entry[2] != file_path:
+            if (
+                added_entry is None
+                or added_entry[1] != metadata_str
+                or added_entry[2] != file_path
+            ):
                 logging.error(f"Could not add entry to history.")
                 raise HistoryError("Could not add entry to history.")
 
@@ -146,16 +164,30 @@ class HistoryHandler:
         with self.db_conn as conn:
             cursor = conn.cursor()
             if uploaded_at:
-                cursor.execute("UPDATE spp SET uploaded=1, uploaded_at=? WHERE id=?",
-                               (uploaded_at, entry_id))
+                cursor.execute(
+                    "UPDATE spp SET uploaded=1, uploaded_at=? WHERE id=?",
+                    (uploaded_at, entry_id),
+                )
             else:
                 cursor.execute("UPDATE spp SET uploaded=1 WHERE id=?", (entry_id,))
+
+            cursor.execute("SELECT uploaded FROM spp WHERE id=?", (entry_id,))
+            test_result = cursor.fetchone()
+
+            if test_result is None or test_result[0] != 1:
+                logging.error(f"Could not mark entry {entry_id} as uploaded.")
+                raise HistoryError(
+                    f"Could not mark entry with id {entry_id} as uploaded."
+                )
+
             logging.info(f"Marked entry {entry_id} as uploaded.")
 
     def remove_from_history(self, entry_id: int, clean: bool = True):
         with self.db_conn as conn:
             cursor = conn.cursor()
-            cursor.execute("SELECT metadata, filepath FROM spp WHERE id=%d", (entry_id,))
+            cursor.execute(
+                "SELECT metadata, filepath FROM spp WHERE id=%d", (entry_id,)
+            )
             (metadata_str, file_path) = cursor.fetchone()
             metadata = self.load_metadata(metadata_str)
             metadata_as_model = LibgenMetadata(**metadata)

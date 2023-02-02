@@ -11,7 +11,7 @@ def _sqlite_conn():
     """
     user_settings = load_user_settings()
     db_path = user_settings.history_db_path
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=60)
 
     return conn
 
