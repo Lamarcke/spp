@@ -5,6 +5,7 @@ import time
 from selenium.common import WebDriverException
 
 from config.driver_config import driver_setup
+from exceptions.exceptions import ScraperError
 from history import HistoryHandler
 from scrapers import ELivrosDownloader
 
@@ -44,6 +45,18 @@ def elivros_downloader(max_downloads_num: int = 0):
             scraper = ELivrosDownloader()
             driver = driver_setup()
             continue
+
+        except ScraperError as e:
+            e_str = str(e)
+            if e_str == "No downloads where started.":
+                print(
+                    "Elivros download service is currently down. Waiting 900 seconds..."
+                )
+                driver.quit()
+                time.sleep(900)
+                scraper = ELivrosDownloader()
+                driver = driver_setup()
+                continue
 
         except KeyboardInterrupt:
             break

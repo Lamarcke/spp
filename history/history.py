@@ -1,6 +1,7 @@
 import logging
 import os
 from typing import Generator
+from unittest import result
 
 from inquirer.questions import json
 from exceptions.exceptions import HistoryError
@@ -182,16 +183,19 @@ class HistoryHandler:
 
             logging.info(f"Marked entry {entry_id} as uploaded.")
 
-    def remove_from_history(self, entry_id: int, clean: bool = True):
+    def remove_from_history(self, entry_id: int, clean: bool = False):
         with self.db_conn as conn:
             cursor = conn.cursor()
-            cursor.execute(
-                "SELECT metadata, filepath FROM spp WHERE id=%d", (entry_id,)
-            )
-            (metadata_str, file_path) = cursor.fetchone()
-            metadata = self.load_metadata(metadata_str)
-            metadata_as_model = LibgenMetadata(**metadata)
+            cursor.execute("SELECT filepath FROM spp WHERE id=?", (entry_id,))
+            result = cursor.fetchone()
+            if result is None or len(result) == 0:
+                logging.error(f"Could not find entry {entry_id} in history.")
+                raise HistoryError(f"Could not find entry {entry_id} in history.")
+
+            file_path = result[0]
+
+            cursor.execute("DELETE FROM spp WHERE id=?", (entry_id,))
             if clean:
                 self._remove_file(file_path)
-            cursor.execute("DELETE FROM spp WHERE id=?", (entry_id,))
+
             logging.info(f"Removed {entry_id} from history.")

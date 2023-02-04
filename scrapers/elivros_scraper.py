@@ -313,6 +313,7 @@ class ELivrosDownloader:
 
             spinner.write("Starting download...")
             self._start_downloading()
+            time.sleep(6)
 
             elapsed_time = 0
             seconds_per_iteration = 2

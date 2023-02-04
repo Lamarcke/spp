@@ -74,10 +74,13 @@ class LibgenUploadHandler:
                 f"Libgen has deemed file as a duplicate on {self.current_metadata.topic} collection."
             )
             logging.error(f"File info: {self.current_file_path}")
-            print(
-                f"Libgen has deemed file a duplicate on {self.current_metadata.topic} collection."
-            )
             self.history_handler.mark_as_uploaded(entry_id)
+
+        elif form_error_text.find("file size is below") != -1:
+            logging.error("Libgen has deemed file as too small for upload.")
+            logging.error(f"File info: {self.current_file_path}")
+            logging.error("Removing from history while keeping the original file.")
+            self.history_handler.remove_from_history(entry_id)
 
     def navigate(self):
         driver = self.driver
@@ -304,5 +307,6 @@ class LibgenUploadHandler:
                 upload_url = self._finish_upload()
 
                 self.history_handler.mark_as_uploaded(entry.entry_id, upload_url)
+                logging.info(f"Successfully uploaded file: {entry.file_path}")
                 spinner.write("Marked as uploaded in history")
                 spinner.ok("✔")
